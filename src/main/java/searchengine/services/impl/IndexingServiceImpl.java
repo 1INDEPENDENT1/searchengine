@@ -27,6 +27,7 @@ import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -39,6 +40,8 @@ public class IndexingServiceImpl implements IndexingService {
 /*    private final LemmaRepository lemmaRepo;
     private final IndexesRepository indexRepo;*/
     private final ForkJoinPool forkJoinPool;
+    private final static AtomicBoolean isRunning = new AtomicBoolean(false);
+    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
 
     @Autowired
     public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo/*, LemmaRepository lemmaRepo, IndexesRepository indexRepo*/) {
@@ -56,15 +59,29 @@ public class IndexingServiceImpl implements IndexingService {
         List<Site> sitesList = sites.getSites();
         List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
 
-        entities.parallelStream()
-                .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
-                .map(siteEntity -> CompletableFuture.runAsync(() -> {
-                    ScrapTask task = new ScrapTask(siteRepo, pageRepo, siteEntity, siteEntity.getUrl(), new ConcurrentSkipListSet<>());
-                    ForkJoinPool.commonPool().invoke(task); // Выполняем задачу асинхронно
-                }))
-                .forEach(CompletableFuture::join); // Дожидаемся завершения каждой задачи
+        List<SiteEntity> notIndexedEntities = entities.parallelStream()
+                .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED)).toList();
 
-        return true;
+        if (!notIndexedEntities.isEmpty() || !isRunning.get()) {
+            isRunning.set(true);
+            notIndexedEntities.parallelStream()
+                    .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
+                    .forEach(siteEntity -> CompletableFuture.runAsync(() -> {
+                        ForkJoinPool customPool = new ForkJoinPool(); // Создаем отдельный пул для каждой задачи
+                        try {
+                            ScrapTask task = new ScrapTask(siteRepo, pageRepo, siteEntity, siteEntity.getUrl(), true);
+                            customPool.invoke(task);
+                        } finally {
+                            customPool.shutdown();
+                        }
+                    }));
+
+            log.info("Indexing completed for all sites.");
+            return true;
+        }
+
+        log.info("All sites have already been indexed or are currently being indexed.");
+        return false;
     }
 
     private List<SiteEntity> updateOrCreateSiteEntities(final List<Site> sitesList) {
@@ -96,7 +113,7 @@ public class IndexingServiceImpl implements IndexingService {
         clearExistingData(site);
         ArrayList<String> listOfUrls = new ArrayList<>(List.of(site.getUrl()));
         listOfUrls.parallelStream().forEach(url -> {
-            ScrapTask task = new ScrapTask(siteRepo, pageRepo, site, url, new ConcurrentSkipListSet<>());
+            ScrapTask task = new ScrapTask(siteRepo, pageRepo, site, url, true);
             ForkJoinPool.commonPool().invoke(task);
         });
     }
