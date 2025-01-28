@@ -25,9 +25,7 @@ public class LemmaTask {
     public boolean isNotServiceWord(String word) {
         List<String> skipTags = List.of("МЕЖД", "ПРЕДЛ", "СОЮЗ", "ЧАСТ", "PREP", "CONJ", "ART", "PART");
 
-        boolean isNotServiceWord = skipTags.stream().noneMatch(word::contains);
-
-        return isNotServiceWord;
+        return  skipTags.stream().noneMatch(word::contains);
     }
 
     public List<String> removeFunctionsWords(final List<String> words, final LangEnum lang) {
@@ -44,7 +42,7 @@ public class LemmaTask {
 
     public void sortWordsOnRussianAndEnglishWords(final String pageText) {
         // Разделяем текст на слова, удаляем пунктуацию, пробелы, переводим в нижний регистр
-        List<String> words = Arrays.asList(pageText.split("\\p{Blank}+")).parallelStream()
+        List<String> words = Arrays.asList(removeHtmlTags(pageText).split("[ \\t]+")).parallelStream()
                 .map(s -> s.replaceAll("\\p{Punct}", "")) // Удаление пунктуации
                 .map(String::trim)                       // Удаление лишних пробелов
                 .map(String::toLowerCase)                // Перевод в нижний регистр
@@ -65,6 +63,10 @@ public class LemmaTask {
         // Вывод результата
         System.out.println("English words: " + englishWords);
         System.out.println("Russian words: " + russianWords);
+    }
+
+    public static String removeHtmlTags(String htmlCode) {
+        return htmlCode != null ? htmlCode.replaceAll("<[^>]*>", "").trim() : null;
     }
 
     public String getMorphInfoSave(final String word, final LangEnum lang) {
