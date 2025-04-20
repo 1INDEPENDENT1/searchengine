@@ -2,12 +2,12 @@ package searchengine.controllers;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.StatisticsService;
 import searchengine.services.impl.IndexingServiceImpl;
+import searchengine.services.impl.SearchService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,10 +18,12 @@ public class ApiController {
 
     private final StatisticsService statisticsService;
     private final IndexingServiceImpl indexingService;
+    private final SearchService searchService;
 
-    public ApiController(StatisticsService statisticsService, IndexingServiceImpl indexingService) {
+    public ApiController(StatisticsService statisticsService, IndexingServiceImpl indexingService, SearchService searchService) {
         this.statisticsService = statisticsService;
         this.indexingService = indexingService;
+        this.searchService = searchService;
     }
 
     @GetMapping("/statistics")
@@ -48,4 +50,27 @@ public class ApiController {
     public boolean stopIndexing() {
         return indexingService.stopIndexing();
     }
+
+    @PostMapping("/indexPage")
+    public ResponseEntity<?> indexPage(@RequestParam("url") String url) {
+        Map<String, Object> result = indexingService.handlePageUpdate(url);
+
+        if (Boolean.FALSE.equals(result.get("result"))) {
+            return ResponseEntity.badRequest().body(result);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<?> search(@RequestParam String query,
+                                    @RequestParam(required = false) String site,
+                                    @RequestParam(defaultValue = "0") int offset,
+                                    @RequestParam(defaultValue = "20") int limit) {
+        if (query == null || query.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("result", false, "error", "Задан пустой поисковый запрос"));
+        }
+        return ResponseEntity.ok(searchService.search(query, site, offset, limit));
+    }
+
+
 }
