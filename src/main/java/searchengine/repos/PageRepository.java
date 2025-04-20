@@ -13,11 +13,14 @@ public interface PageRepository extends JpaRepository<PageEntity, Integer> {
     PageEntity findByPath(String path);
 
     void deleteBySiteEntity(SiteEntity site);
+
     @Query("SELECT p FROM PageEntity p WHERE p.siteEntity = :siteEntity")
     List<PageEntity> findAllBySiteEntity(SiteEntity siteEntity);
 
 
     @Query("SELECT p FROM PageEntity p WHERE p.path = :path AND p.siteEntity = :siteEntity")
     PageEntity findByPathAndSiteEntity(String path, SiteEntity siteEntity);
+
+    long countBySiteEntity(SiteEntity siteEntity);
 }
 
