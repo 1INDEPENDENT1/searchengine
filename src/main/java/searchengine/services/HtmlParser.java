@@ -6,8 +6,10 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -52,16 +54,20 @@ public class HtmlParser {
     }
 
     public Set<String> getUrls() throws IOException, URISyntaxException {
-        Document doc = Jsoup.connect(url).get();
-        Elements links = doc.select("a[href]");
-        URI baseURI = new URI(url);
+        try {
+            Document doc = Jsoup.connect(url).get();
+            Elements links = doc.select("a[href]");
+            URI baseURI = new URI(url);
 
-        return links.parallelStream()  // Используем параллельные потоки
-                .map(link -> link.attr("abs:href"))
-                .filter(this::isValidUrl)
-                .filter(href -> isSameDomain(href, baseURI))
-                .filter(this::isHtmlPage)
-                .collect(Collectors.toSet());
+            return links.parallelStream()  // Используем параллельные потоки
+                    .map(link -> link.attr("abs:href"))
+                    .filter(this::isValidUrl)
+                    .filter(this::isHtmlPage)
+                    .filter(href -> isSameDomain(href, baseURI))
+                    .collect(Collectors.toSet());
+        }catch (SocketTimeoutException e) {
+            return new HashSet<>();
+        }
     }
 
     private boolean isValidUrl(final String url) {

@@ -1,5 +1,6 @@
 package searchengine.services.impl;
 
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
@@ -8,24 +9,17 @@ import searchengine.models.IndexesEntity;
 import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.IndexesRepository;
-import searchengine.repos.LemmaRepository;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
-import lombok.extern.log4j.Log4j2;
+import searchengine.services.WebScraperService;
 import searchengine.tasks.ScrapTask;
 
 import java.net.MalformedURLException;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeSet;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.*;
+
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -37,20 +31,19 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
-/*    private final LemmaRepository lemmaRepo;
-    private final IndexesRepository indexRepo;*/
+    private final WebScraperService webScraperService;
     private final ForkJoinPool forkJoinPool;
     private final static AtomicBoolean isRunning = new AtomicBoolean(false);
-    private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+    private final IndexesRepository indexesRepository;
 
     @Autowired
-    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo/*, LemmaRepository lemmaRepo, IndexesRepository indexRepo*/) {
+    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo, WebScraperService webScraperService,/*, LemmaRepository lemmaRepo, IndexesRepository indexRepo*/IndexesRepository indexesRepository) {
         this.sites = sites;
         this.siteRepo = siteRepo;
         this.pageRepo = pageRepo;
-/*        this.lemmaRepo = lemmaRepo;
-        this.indexRepo = indexRepo;*/
+        this.webScraperService = webScraperService;
         this.forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        this.indexesRepository = indexesRepository;
     }
 
     @Override
@@ -59,28 +52,35 @@ public class IndexingServiceImpl implements IndexingService {
         List<Site> sitesList = sites.getSites();
         List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
 
-        List<SiteEntity> notIndexedEntities = entities.parallelStream()
-                .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED)).toList();
+        List<SiteEntity> notIndexedEntities = entities.stream()
+                .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
+                .toList();
 
-        if (!notIndexedEntities.isEmpty() || !isRunning.get()) {
+        if (notIndexedEntities.isEmpty()) {
+            log.info("Нет сайтов для индексации — все уже INDEXED.");
+            return false;
+        }
+
+        if (!isRunning.get()) {
             isRunning.set(true);
-            notIndexedEntities.parallelStream()
-                    .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
-                    .forEach(siteEntity -> CompletableFuture.runAsync(() -> {
-                        ForkJoinPool customPool = new ForkJoinPool(); // Создаем отдельный пул для каждой задачи
-                        try {
-                            ScrapTask task = new ScrapTask(siteRepo, pageRepo, siteEntity, siteEntity.getUrl(), true);
-                            customPool.invoke(task);
-                        } finally {
-                            customPool.shutdown();
-                        }
-                    }));
 
-            log.info("Indexing completed for all sites.");
+            for (SiteEntity siteEntity : notIndexedEntities) {
+                ScrapTask task = new ScrapTask(
+                        siteRepo,
+                        pageRepo,
+                        siteEntity,
+                        webScraperService,
+                        siteEntity.getUrl(),
+                        true
+                );
+                forkJoinPool.submit(task);
+            }
+
+            log.info("Indexing started asynchronously for all sites.");
             return true;
         }
 
-        log.info("All sites have already been indexed or are currently being indexed.");
+        log.info("Indexing has already started. New tasks have not started.");
         return false;
     }
 
@@ -113,14 +113,14 @@ public class IndexingServiceImpl implements IndexingService {
         clearExistingData(site);
         ArrayList<String> listOfUrls = new ArrayList<>(List.of(site.getUrl()));
         listOfUrls.parallelStream().forEach(url -> {
-            ScrapTask task = new ScrapTask(siteRepo, pageRepo, site, url, true);
+            ScrapTask task = new ScrapTask(siteRepo, pageRepo, site, webScraperService, url, true);
             ForkJoinPool.commonPool().invoke(task);
         });
     }
 
     private void clearExistingData(SiteEntity site) {
-        /*List<IndexesEntity> indexes = indexRepo.findIndex4LemmaNPage(site.getUrl());
-        indexRepo.deleteAll(indexes);*/
+        /*List<IndexesEntity> indexes = indexesRepository.findIndex4LemmaNPage(site.getUrl());
+        indexesRepository.deleteAll(indexes);*/
         pageRepo.deleteBySiteEntity(site);
     }
 
@@ -133,23 +133,47 @@ public class IndexingServiceImpl implements IndexingService {
         return false;
     }
 
-    public boolean addUpdatePage(String page) {
+    public Map<String, Object> handlePageUpdate(String urlStr) {
+        String finalUrlString = urlStr.trim().toLowerCase().replaceAll("www.", "");
+        Map<String, Object> response = new HashMap<>();
         try {
-            URL url = new URL(URLDecoder.decode(page));
-            url.toURI();
-            return handlePageUpdate(url);
-        } catch (MalformedURLException | URISyntaxException e) {
-            log.error("Invalid URL: {}", page, e);
-            return false;
-        }
-    }
+            new URL(finalUrlString);
+            Optional<Site> matchingSite = sites.getSites().stream()
+                    .filter(site -> finalUrlString.contains(site.getUrl()))
+                    .findFirst();
 
-    private boolean handlePageUpdate(URL url) throws URISyntaxException {
-        SiteEntity site = siteRepo.findByUrl(url.toString()).orElse(
-                new SiteEntity(url.toURI().toString(), url.getHost(), SiteStatusType.INDEXING));
-        site.setStatusTime(LocalDateTime.now());
-        site.setStatus(SiteStatusType.INDEXING);
-        siteRepo.save(site);
-        return true;
+            if (matchingSite.isEmpty()) {
+                log.error("This page is located on additional sites specified in the configuration file.");
+                response.put("result", false);
+                response.put("error", "This page is located on additional sites specified in the configuration file.");
+                return response;
+            }
+
+            Site siteConfig = matchingSite.get();
+            SiteEntity siteEntity = siteRepo.findByUrl(siteConfig.getUrl())
+                    .orElseGet(() -> {
+                        SiteEntity newSite = new SiteEntity(siteConfig.getUrl(), siteConfig.getName(), SiteStatusType.INDEXING);
+                        siteRepo.save(newSite);
+                        return newSite;
+                    });
+
+            siteEntity.setStatus(SiteStatusType.INDEXING);
+            siteEntity.setStatusTime(LocalDateTime.now());
+            siteRepo.save(siteEntity);
+            log.info("Indexing page '{}'", siteConfig.getUrl());
+            webScraperService.reindexPage(finalUrlString, siteEntity);
+
+            response.put("result", true);
+        } catch (MalformedURLException e) {
+            log.error("Wrong URL format");
+            response.put("result", false);
+            response.put("error", "Wrong URL format");
+        } catch (Exception e) {
+            log.error("Error processing page: \" + e.getMessage()");
+            response.put("result", false);
+            response.put("error", "Error processing page: " + e.getMessage());
+        }
+
+        return response;
     }
 }
