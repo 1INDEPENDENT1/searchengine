@@ -34,10 +34,9 @@ public class ScrapTask extends RecursiveAction {
     protected void compute() {
         try {
             taskSemaphore.acquire(); // Ждём, если лимит достигнут
-
             totalTaskCount.incrementAndGet();
             webScraperService.getPageAndSave(url, siteEntity);
-            Set<String> discoveredUrls = new HashSet<>(new HtmlParser(url).getUrls());
+            Set<String> discoveredUrls = new HashSet<>(new HtmlParser(url).getPaths());
             processDiscoveredUrls(discoveredUrls);
         } catch (Exception e) {
             log.error("Error processing URL", e);

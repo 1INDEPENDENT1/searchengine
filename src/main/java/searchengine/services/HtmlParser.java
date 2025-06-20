@@ -53,7 +53,7 @@ public class HtmlParser {
         this.url = url;
     }
 
-    public Set<String> getUrls() throws IOException, URISyntaxException {
+    public Set<String> getPaths() throws IOException, URISyntaxException {
         try {
             Document doc = Jsoup.connect(url).get();
             Elements links = doc.select("a[href]");
@@ -64,6 +64,7 @@ public class HtmlParser {
                     .filter(this::isValidUrl)
                     .filter(this::isHtmlPage)
                     .filter(href -> isSameDomain(href, baseURI))
+                    .map(this::getAbsolutePath)
                     .collect(Collectors.toSet());
         }catch (SocketTimeoutException e) {
             return new HashSet<>();
@@ -79,9 +80,18 @@ public class HtmlParser {
         try {
             childURI = new URI(childUrl);
         } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
+            return false;
         }
         return childURI.getHost().contains(baseURI.getHost());
+    }
+
+    private String getAbsolutePath(final String url) {
+        try {
+            String[] path = new URI(url).getPath().split("\\?");
+            return path[0];
+        } catch (URISyntaxException e) {
+            return "/";
+        }
     }
 
     private boolean isHtmlPage(String url) {
