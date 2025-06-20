@@ -27,7 +27,7 @@ public class ScrapTask extends RecursiveAction {
     private final AtomicInteger totalTaskCount = new AtomicInteger();
     private final AtomicInteger completedTaskCount = new AtomicInteger();
 
-    private static final int MAX_CONCURRENT_TASKS = 15_000;
+    private static final int MAX_CONCURRENT_TASKS = 12_000;
     private static final Semaphore taskSemaphore = new Semaphore(MAX_CONCURRENT_TASKS);
 
     @Override
