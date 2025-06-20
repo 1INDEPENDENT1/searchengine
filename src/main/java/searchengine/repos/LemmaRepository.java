@@ -14,6 +14,13 @@ import java.util.List;
 public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     long countBySiteEntity(SiteEntity siteEntity);
 
+    List<LemmaEntity> findBySiteEntity(SiteEntity siteEntity);
+
     @Query("SELECT l FROM LemmaEntity l WHERE l.lemma IN :lemmas AND l.siteEntity.id = :siteId")
     List<LemmaEntity> findByLemmaIn(@Param("lemmas") List<String> lemmas, @Param("siteId") int siteId);
+
+    @Query("SELECT l FROM LemmaEntity l WHERE l.lemma = :lemma AND l.siteEntity.id = :siteId")
+    List<LemmaEntity> findByLemmaIn(@Param("lemmas") String lemma, @Param("siteId") int siteId);
+
+    void deleteBySiteEntity(SiteEntity siteEntity);
 }

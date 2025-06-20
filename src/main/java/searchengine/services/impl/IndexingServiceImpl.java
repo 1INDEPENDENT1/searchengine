@@ -34,16 +34,18 @@ public class IndexingServiceImpl implements IndexingService {
     private final WebScraperService webScraperService;
     private final ForkJoinPool forkJoinPool;
     private final static AtomicBoolean isRunning = new AtomicBoolean(false);
-    private final IndexesRepository indexesRepository;
+    private final LemmaRepository lemmaRepo;
+    private final IndexesRepository indexRepo;
 
     @Autowired
-    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo, WebScraperService webScraperService,/*, LemmaRepository lemmaRepo, IndexesRepository indexRepo*/IndexesRepository indexesRepository) {
+    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo, WebScraperService webScraperService, LemmaRepository lemmaRepo, IndexesRepository indexRepo) {
         this.sites = sites;
         this.siteRepo = siteRepo;
         this.pageRepo = pageRepo;
         this.webScraperService = webScraperService;
         this.forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
-        this.indexesRepository = indexesRepository;
+        this.indexRepo = indexRepo;
+        this.lemmaRepo = lemmaRepo;
     }
 
     @Override
@@ -119,9 +121,10 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void clearExistingData(SiteEntity site) {
-        /*List<IndexesEntity> indexes = indexesRepository.findIndex4LemmaNPage(site.getUrl());
-        indexesRepository.deleteAll(indexes);*/
         pageRepo.deleteBySiteEntity(site);
+        List<LemmaEntity> lemmas = lemmaRepo.findBySiteEntity(site);
+        indexRepo.deleteByLemmaEntityIn(lemmas);
+        lemmaRepo.deleteBySiteEntity(site);
     }
 
     @Override
