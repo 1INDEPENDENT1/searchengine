@@ -116,6 +116,16 @@ public class SiteIndexingImpl {
         return htmlCode != null ? htmlCode.replaceAll("<[^>]*>", "").trim() : null;
     }
 
+    public String getZeroForm(final String word) {
+        String cleaned = word.replaceAll("[^\\p{IsAlphabetic}]", "").toLowerCase();
+        if (cleaned.matches("[а-яё]+")) {
+            return getSimpleForm(getMorphInfoSave(cleaned, LangEnum.RUS));
+        } else if (cleaned.matches("[a-z]+")) {
+            return getSimpleForm(getMorphInfoSave(cleaned, LangEnum.ENG));
+        }
+        return cleaned;
+    }
+
     private String getMorphInfoSave(final String word, final LangEnum lang) {
         String basicWord;
         try {
@@ -125,10 +135,10 @@ public class SiteIndexingImpl {
             wrongWords.add(word);
             return "";
         }
-        // Регулярное выражение для удаления всего, что заключено в угловые скобки
         return basicWord;
     }
 
+    //Todo: вынести в отдельный метод
     @Transactional
     public void addOrUpdateLemmas(HashMap<String, Integer> lemmaTexts, final SiteEntity siteEntity, final PageEntity page) {
         List<LemmaEntity> existingLemmas = lemmaRepository.findByLemmaIn(new ArrayList<>(lemmaTexts.keySet()), siteEntity.getId());
