@@ -30,7 +30,8 @@ public class WebScraperService {
     @Autowired
     SiteIndexingImpl siteIndexingImpl;
 
-    private Connection.Response fetchDocument(String url, SiteEntity siteEntity) {
+    private Connection.Response fetchDocument(String path, SiteEntity siteEntity) {
+        String url = getFullUrl(path, siteEntity);
         log.info("Fetch document by url \"{}\"", url);
         try {
             return Jsoup.connect(url)
@@ -40,30 +41,30 @@ public class WebScraperService {
                     .followRedirects(true)
                     .execute();
         } catch (IOException ex) {
-            saveUrlPage(url, ex.getMessage(), 500, siteEntity);
+            saveUrlPage(path, ex.getMessage(), 500, siteEntity);
             log.error(ex.getMessage());
         }
         return null;
     }
 
-    public void getPageAndSave(String url, SiteEntity siteEntity) {
+    public void getPageAndSave(String path, SiteEntity siteEntity) {
         try {
-            Connection.Response response = fetchDocument(url, siteEntity);
+            Connection.Response response = fetchDocument(path, siteEntity);
             if (response != null) {
                 Document document = response.parse();
                 int statusCode = response.statusCode();
-                saveUrlPage(url, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
+                saveUrlPage(path, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
             }
         } catch (
                 HttpStatusException e) {
-            log.error("HTTP error while fetching URL: {}, Status: {}", url, e.getStatusCode());
-            saveUrlPage(url, e.getMessage(), e.getStatusCode(), siteEntity);
-            throw new RuntimeException("HTTP error fetching URL: " + url, e);
+            log.error("HTTP error while fetching URL: {}, Status: {}", path, e.getStatusCode());
+            saveUrlPage(path, e.getMessage(), e.getStatusCode(), siteEntity);
+            throw new RuntimeException("HTTP error fetching URL: " + path, e);
         } catch (
                 IOException e) {
-            log.error("IO error while fetching URL: {}", url, e);
-            saveUrlPage(url, e.getMessage(), 500, siteEntity);
-            throw new RuntimeException("IO error fetching URL: " + url, e);
+            log.error("IO error while fetching URL: {}", path, e);
+            saveUrlPage(path, e.getMessage(), 500, siteEntity);
+            throw new RuntimeException("IO error fetching URL: " + path, e);
         }
     }
 
@@ -90,15 +91,19 @@ public class WebScraperService {
         }
     }
 
-    public boolean isNotContainsUrl(String url) {
-        return pageRepo.findByPath(url) == null;
+    public boolean isNotContainsUrl(String path) {
+        return pageRepo.findByPath(path) == null;
     }
 
-    public void reindexPage(String url, SiteEntity siteEntity) {
-        PageEntity existingPage = pageRepo.findByPath(url);
+    public void reindexPage(String path, SiteEntity siteEntity) {
+        PageEntity existingPage = pageRepo.findByPath(path);
         siteIndexingImpl.removePageData(existingPage);
         pageRepo.delete(existingPage);
-        getPageAndSave(url, siteEntity);
+        getPageAndSave(path, siteEntity);
+    }
+
+    private String getFullUrl(String path, SiteEntity siteEntity) {
+        return siteEntity.getUrl() + path;
     }
 }
 
