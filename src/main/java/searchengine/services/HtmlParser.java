@@ -4,6 +4,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
 import org.jsoup.select.Elements;
+import searchengine.models.SiteEntity;
 
 import java.io.IOException;
 import java.net.SocketTimeoutException;
@@ -48,37 +49,48 @@ public class HtmlParser {
             "javascript:void", "#"
     );
     private final String url;
+    private final SiteEntity siteEntity;
 
-    public HtmlParser(String url) {
+    public HtmlParser(String url, SiteEntity siteEntity) {
         this.url = url;
+        this.siteEntity = siteEntity;
     }
 
     public Set<String> getPaths() throws IOException, URISyntaxException {
+        Document doc = null;
+        final String homeUrl = siteEntity.getUrl();
         try {
-            Document doc = Jsoup.connect(url).get();
-            Elements links = doc.select("a[href]");
-            URI baseURI = new URI(url);
+            if (!url.equals(homeUrl)) {
+                Jsoup.connect(homeUrl + url);
+            } else {
+                doc = Jsoup.connect(url).get();
+            }
+            if (doc != null) {
+                Elements links = doc.select("a[href]");
 
-            return links.parallelStream()  // Используем параллельные потоки
-                    .map(link -> link.attr("abs:href"))
-                    .filter(this::isValidUrl)
-                    .filter(this::isHtmlPage)
-                    .filter(href -> isSameDomain(href, baseURI))
-                    .map(this::getAbsolutePath)
-                    .collect(Collectors.toSet());
-        }catch (SocketTimeoutException e) {
-            return new HashSet<>();
+                return links.parallelStream()  // Используем параллельные потоки
+                        .map(link -> link.attr("abs:href"))
+                        .filter(this::isValidUrl)
+                        .filter(this::isHtmlPage)
+                        .filter(href -> isSameDomain(href, homeUrl))
+                        .map(this::getAbsolutePath)
+                        .collect(Collectors.toSet());
+            }
+        } catch (SocketTimeoutException ignored) {
         }
+        return new HashSet<>();
     }
 
     private boolean isValidUrl(final String url) {
         return url.startsWith("http://") || url.startsWith("https://");
     }
 
-    private boolean isSameDomain(final String childUrl, URI baseURI)  {
+    private boolean isSameDomain(final String childUrl, String baseURIStr) {
         URI childURI;
+        URI baseURI;
         try {
             childURI = new URI(childUrl);
+            baseURI = new URI(baseURIStr);
         } catch (URISyntaxException e) {
             return false;
         }

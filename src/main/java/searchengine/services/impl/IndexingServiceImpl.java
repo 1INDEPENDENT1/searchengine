@@ -22,7 +22,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -34,9 +33,9 @@ public class IndexingServiceImpl implements IndexingService {
     private final PageRepository pageRepo;
     private final WebScraperService webScraperService;
     private final ForkJoinPool forkJoinPool;
-    private final static AtomicBoolean isRunning = new AtomicBoolean(false);
     private final LemmaRepository lemmaRepo;
     private final IndexesRepository indexRepo;
+
 
     @Autowired
     public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo, WebScraperService webScraperService, LemmaRepository lemmaRepo, IndexesRepository indexRepo) {
@@ -51,31 +50,22 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public boolean startIndexing() {
-        log.info("Starting indexing process.");
-        List<Site> sitesList = sites.getSites();
-        List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
+        if (!isIndexingInProgress()) {
+            log.info("Starting indexing process.");
+            List<Site> sitesList = sites.getSites();
+            List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
 
-        List<SiteEntity> notIndexedEntities = entities.stream()
-                .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
-                .toList();
+            List<SiteEntity> notIndexedEntities = entities.stream()
+                    .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
+                    .toList();
 
-        if (notIndexedEntities.isEmpty()) {
-            log.info("Нет сайтов для индексации — все уже INDEXED.");
-            return false;
-        }
-
-        if (!isRunning.get()) {
-            isRunning.set(true);
+            if (notIndexedEntities.isEmpty()) {
+                log.info("Нет сайтов для индексации — все уже INDEXED.");
+                return false;
+            }
 
             for (SiteEntity siteEntity : notIndexedEntities) {
-                ScrapTask task = new ScrapTask(
-                        siteRepo,
-                        pageRepo,
-                        siteEntity,
-                        webScraperService,
-                        siteEntity.getUrl(),
-                        true
-                );
+                ScrapTask task = prepareIndexingTask(siteEntity);
                 forkJoinPool.submit(task);
             }
 
@@ -92,13 +82,11 @@ public class IndexingServiceImpl implements IndexingService {
         Map<String, SiteEntity> urlToEntityMap = entities.stream()
                 .collect(Collectors.toMap(SiteEntity::getUrl, Function.identity()));
 
-        sitesList.forEach(site -> {
-            urlToEntityMap.computeIfAbsent(site.getUrl(), url -> {
-                SiteEntity newEntity = createNewSiteEntity(site);
-                entities.add(newEntity);
-                return newEntity;
-            });
-        });
+        sitesList.forEach(site -> urlToEntityMap.computeIfAbsent(site.getUrl(), url -> {
+            SiteEntity newEntity = createNewSiteEntity(site);
+            entities.add(newEntity);
+            return newEntity;
+        }));
 
         return entities;
     }
@@ -109,16 +97,12 @@ public class IndexingServiceImpl implements IndexingService {
         return entity;
     }
 
-    private void indexSite(SiteEntity site) {
+    public ScrapTask prepareIndexingTask(SiteEntity site) {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
         clearExistingData(site);
-        ArrayList<String> listOfUrls = new ArrayList<>(List.of(site.getUrl()));
-        listOfUrls.parallelStream().forEach(url -> {
-            ScrapTask task = new ScrapTask(siteRepo, pageRepo, site, webScraperService, url, true);
-            ForkJoinPool.commonPool().invoke(task);
-        });
+        return new ScrapTask(siteRepo, pageRepo, site, webScraperService, site.getUrl(), true);
     }
 
     private void clearExistingData(SiteEntity site) {
@@ -128,10 +112,27 @@ public class IndexingServiceImpl implements IndexingService {
         lemmaRepo.deleteBySiteEntity(site);
     }
 
+    public boolean isIndexingInProgress() {
+        return siteRepo.findAll().stream()
+                .anyMatch(site -> site.getStatus() == SiteStatusType.INDEXING);
+    }
+
     @Override
     public boolean stopIndexing() {
-        if (!forkJoinPool.isShutdown()) {
+        if (isIndexingInProgress()) {
             forkJoinPool.shutdownNow();
+
+            List<SiteEntity> indexingSites = siteRepo.findAll().stream()
+                    .filter(site -> site.getStatus() == SiteStatusType.INDEXING)
+                    .toList();
+
+            for (SiteEntity site : indexingSites) {
+                site.setStatus(SiteStatusType.FAILED);
+                site.setStatusTime(LocalDateTime.now());
+                site.setLastError("Индексация была остановлена вручную");
+                siteRepo.save(site);
+            }
+
             return true;
         }
         return false;
