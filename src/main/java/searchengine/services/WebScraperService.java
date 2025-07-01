@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 
 import searchengine.models.SiteEntity;
+import searchengine.services.impl.SafeIndexingService;
 import searchengine.services.impl.SiteIndexingImpl;
 
 @Service
@@ -29,6 +30,7 @@ public class WebScraperService {
     private final PageRepository pageRepo;
     @Autowired
     SiteIndexingImpl siteIndexingImpl;
+    SafeIndexingService safeIndexingService;
 
     private Connection.Response fetchDocument(String path, SiteEntity siteEntity) {
         String url = getFullUrl(path, siteEntity);
@@ -83,9 +85,14 @@ public class WebScraperService {
                         siteIndexingImpl.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
                     }
                 } catch (UnexpectedRollbackException e) {
-                    siteIndexingImpl.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
+                    log.warn("Rollback detected. Trying fallback...");
+                    try {
+                        safeIndexingService.saveTextWithNewTransaction(pageContent, siteEntity, page);
+                    } catch (Exception ex) {
+                        log.error("Fallback also failed. Skipping: {}", ex.getMessage());
+                    }
                 }
-            } catch (DataIntegrityViolationException e) {
+            } catch (Exception e) {
                 log.error(e.getMessage());
             }
         }
@@ -103,7 +110,11 @@ public class WebScraperService {
     }
 
     private String getFullUrl(String path, SiteEntity siteEntity) {
-        return siteEntity.getUrl() + path;
+        if (!siteEntity.getUrl().equals(path)) {
+            return siteEntity.getUrl() + path;
+        } else {
+            return path;
+        }
     }
 }
 
