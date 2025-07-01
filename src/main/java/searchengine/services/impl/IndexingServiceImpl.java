@@ -22,6 +22,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -32,7 +34,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
     private final WebScraperService webScraperService;
-    private final ForkJoinPool forkJoinPool;
+    private final List<ForkJoinPool> forkJoinPools = new ArrayList<>();
     private final LemmaRepository lemmaRepo;
     private final IndexesRepository indexRepo;
 
@@ -43,7 +45,6 @@ public class IndexingServiceImpl implements IndexingService {
         this.siteRepo = siteRepo;
         this.pageRepo = pageRepo;
         this.webScraperService = webScraperService;
-        this.forkJoinPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
         this.indexRepo = indexRepo;
         this.lemmaRepo = lemmaRepo;
     }
@@ -65,8 +66,10 @@ public class IndexingServiceImpl implements IndexingService {
             }
 
             for (SiteEntity siteEntity : notIndexedEntities) {
-                ScrapTask task = prepareIndexingTask(siteEntity);
-                forkJoinPool.submit(task);
+                ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+                forkJoinPools.add(pool);
+                ScrapTask task = prepareIndexingTask(siteEntity, pool);
+                pool.submit(task);
             }
 
             log.info("Indexing started asynchronously for all sites.");
@@ -97,12 +100,16 @@ public class IndexingServiceImpl implements IndexingService {
         return entity;
     }
 
-    public ScrapTask prepareIndexingTask(SiteEntity site) {
+    public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool) {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
         clearExistingData(site);
-        return new ScrapTask(siteRepo, pageRepo, site, webScraperService, site.getUrl(), true);
+        AtomicInteger totalCount = new AtomicInteger();
+        AtomicInteger completedCount = new AtomicInteger();
+        Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
+        return new ScrapTask(siteRepo, pageRepo, site, webScraperService,
+                site.getUrl(), true, totalCount, completedCount, semaphore, pool);
     }
 
     private void clearExistingData(SiteEntity site) {
@@ -120,7 +127,10 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public boolean stopIndexing() {
         if (isIndexingInProgress()) {
-            forkJoinPool.shutdownNow();
+            for (ForkJoinPool pool : forkJoinPools) {
+                pool.shutdownNow();
+            }
+            forkJoinPools.clear();
 
             List<SiteEntity> indexingSites = siteRepo.findAll().stream()
                     .filter(site -> site.getStatus() == SiteStatusType.INDEXING)
