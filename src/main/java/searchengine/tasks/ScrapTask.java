@@ -1,6 +1,5 @@
 package searchengine.tasks;
 
-import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import searchengine.models.SiteEntity;
@@ -15,38 +14,37 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RequiredArgsConstructor
-@AllArgsConstructor
 @Log4j2
 public class ScrapTask extends RecursiveAction {
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
     private final SiteEntity siteEntity;
     private final WebScraperService webScraperService;
-    private String url;
-    private boolean isRootTask;
-    private final AtomicInteger totalTaskCount = new AtomicInteger();
-    private final AtomicInteger completedTaskCount = new AtomicInteger();
+    private final String url;
+    private final boolean isRootTask;
+    private final AtomicInteger totalTaskCount;
+    private final AtomicInteger completedTaskCount;
+    private final Semaphore taskSemaphore;
+    private final ForkJoinPool pool;
 
-    private static final int MAX_CONCURRENT_TASKS = 12_000;
-    private static final Semaphore taskSemaphore = new Semaphore(MAX_CONCURRENT_TASKS);
+    public static final int MAX_CONCURRENT_TASKS = 12_000;
 
     @Override
     protected void compute() {
         try {
-            taskSemaphore.acquire(); // Ждём, если лимит достигнут
+            taskSemaphore.acquire();
             totalTaskCount.incrementAndGet();
             webScraperService.getPageAndSave(url, siteEntity);
             Set<String> discoveredUrls = new HashSet<>(new HtmlParser(url, siteEntity).getPaths());
             processDiscoveredUrls(discoveredUrls);
         } catch (Exception e) {
             log.error("Error processing URL", e);
-        }
-        finally {
+        } finally {
             completedTaskCount.incrementAndGet();
-            taskSemaphore.release(); // Освобождаем слот
+            taskSemaphore.release();
 
             if (isRootTask) {
-                endProcessingNgetStrings();
+                endProcessing();
             }
         }
     }
@@ -54,16 +52,17 @@ public class ScrapTask extends RecursiveAction {
     private void processDiscoveredUrls(Set<String> urls) {
         List<ScrapTask> tasks = urls.stream()
                 .filter(webScraperService::isNotContainsUrl)
-                .map(url -> new ScrapTask(siteRepo, pageRepo, siteEntity, webScraperService, url, false))
+                .map(u -> new ScrapTask(siteRepo, pageRepo, siteEntity, webScraperService, u,
+                        false, totalTaskCount, completedTaskCount, taskSemaphore, pool))
                 .toList();
         invokeAll(tasks);
     }
 
-    private void endProcessingNgetStrings() {
+    private void endProcessing() {
         if (completedTaskCount.get() == totalTaskCount.get()) {
             synchronized (this) {
-                if (!ForkJoinTask.getPool().isShutdown()) {
-                    ForkJoinTask.getPool().shutdown();
+                if (!pool.isShutdown()) {
+                    pool.shutdown();
                     log.info("All tasks completed.");
                     siteEntity.setStatus(SiteStatusType.INDEXED);
                     siteRepo.save(siteEntity);
