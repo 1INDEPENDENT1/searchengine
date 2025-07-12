@@ -24,7 +24,6 @@ import java.util.Random;
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
 
-    private final Random random = new Random();
     private final SitesList sites;
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
@@ -32,7 +31,6 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public StatisticsResponse getStatistics() {
-        String[] statuses = { "INDEXED", "FAILED", "INDEXING" };
         String[] errors = {
                 "Ошибка индексации: главная страница сайта не доступна",
                 "Ошибка индексации: сайт не доступен",
@@ -44,9 +42,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         total.setIndexing(true);
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<Site> sitesList = sites.getSites();
-        for(int i = 0; i < sitesList.size(); i++) {
-            Site site = sitesList.get(i);
+        for(Site site : sites.getSites()) {
             SiteEntity siteEntity = siteRepo.findByUrl(site.getUrl()).get();
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
@@ -55,8 +51,8 @@ public class StatisticsServiceImpl implements StatisticsService {
             int lemmas = Math.toIntExact(lemmaRepo.countBySiteEntity(siteEntity));
             item.setPages(pages);
             item.setLemmas(lemmas);
-            item.setStatus(statuses[i % 3]);
-            item.setError(errors[i % 3]);
+            item.setStatus(siteEntity.getStatus().toString());
+            item.setError(siteEntity.getLastError());
             item.setStatusTime(System.currentTimeMillis() - siteEntity.getStatusTime().atZone(ZoneId.systemDefault()).toEpochSecond());
             total.setPages(total.getPages() + pages);
             total.setLemmas(total.getLemmas() + lemmas);
