@@ -127,7 +127,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public boolean stopIndexing() {
-        if (isIndexingInProgress()) {
+        if (siteIndexingHelper.isIndexingInProgress()) {
             for (ForkJoinPool pool : forkJoinPools) {
                 pool.shutdownNow();
             }
@@ -138,6 +138,11 @@ public class IndexingServiceImpl implements IndexingService {
                     .toList();
 
             for (SiteEntity site : indexingSites) {
+                try {
+                    Thread.sleep(3000L);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
                 site.setStatus(SiteStatusType.FAILED);
                 site.setStatusTime(LocalDateTime.now());
                 site.setLastError("Индексация была остановлена вручную");
