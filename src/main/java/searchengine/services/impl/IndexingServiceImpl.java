@@ -66,9 +66,10 @@ public class IndexingServiceImpl implements IndexingService {
             }
 
             for (SiteEntity siteEntity : notIndexedEntities) {
-                ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+                int parallelism = Math.max(2, Runtime.getRuntime().availableProcessors() / notIndexedEntities.size());
+                ForkJoinPool pool = new ForkJoinPool(parallelism);
                 forkJoinPools.add(pool);
-                ScrapTask task = prepareIndexingTask(siteEntity, pool);
+                ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, pool);
                 pool.submit(task);
             }
 
