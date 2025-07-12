@@ -5,14 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
-import searchengine.models.LemmaEntity;
 import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
-import searchengine.repos.IndexesRepository;
-import searchengine.repos.LemmaRepository;
-import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
+import searchengine.services.SiteIndexingHelper;
 import searchengine.services.WebScraperService;
 import searchengine.tasks.ScrapTask;
 
@@ -20,10 +17,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.*;
-
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -32,26 +26,22 @@ import java.util.stream.Collectors;
 public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final SiteRepository siteRepo;
-    private final PageRepository pageRepo;
     private final WebScraperService webScraperService;
+    private final SiteIndexingHelper siteIndexingHelper;
     private final List<ForkJoinPool> forkJoinPools = new ArrayList<>();
-    private final LemmaRepository lemmaRepo;
-    private final IndexesRepository indexRepo;
 
 
     @Autowired
-    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, PageRepository pageRepo, WebScraperService webScraperService, LemmaRepository lemmaRepo, IndexesRepository indexRepo) {
+    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, WebScraperService webScraperService, SiteIndexingHelper siteIndexingHelper) {
         this.sites = sites;
         this.siteRepo = siteRepo;
-        this.pageRepo = pageRepo;
         this.webScraperService = webScraperService;
-        this.indexRepo = indexRepo;
-        this.lemmaRepo = lemmaRepo;
+        this.siteIndexingHelper = siteIndexingHelper;
     }
 
     @Override
     public boolean startIndexing() {
-        if (!isIndexingInProgress()) {
+        if (!siteIndexingHelper.isIndexingInProgress()) {
             log.info("Starting indexing process.");
             List<Site> sitesList = sites.getSites();
             List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
@@ -101,29 +91,6 @@ public class IndexingServiceImpl implements IndexingService {
         return entity;
     }
 
-    public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool) {
-        site.setStatusTime(LocalDateTime.now());
-        site.setStatus(SiteStatusType.INDEXING);
-        siteRepo.save(site);
-        clearExistingData(site);
-        AtomicInteger totalCount = new AtomicInteger();
-        AtomicInteger completedCount = new AtomicInteger();
-        Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
-        return new ScrapTask(siteRepo, pageRepo, site, webScraperService,
-                site.getUrl(), true, totalCount, completedCount, semaphore, pool);
-    }
-
-    private void clearExistingData(SiteEntity site) {
-        pageRepo.deleteBySiteEntity(site);
-        List<LemmaEntity> lemmas = lemmaRepo.findBySiteEntity(site);
-        indexRepo.deleteByLemmaEntityIn(lemmas);
-        lemmaRepo.deleteBySiteEntity(site);
-    }
-
-    public boolean isIndexingInProgress() {
-        return siteRepo.findAll().stream()
-                .anyMatch(site -> site.getStatus() == SiteStatusType.INDEXING);
-    }
 
     @Override
     public boolean stopIndexing() {
