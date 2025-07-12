@@ -47,8 +47,12 @@ public class ApiController {
     }
 
     @GetMapping("/stopIndexing")
-    public boolean stopIndexing() {
-        return indexingService.stopIndexing();
+    public ResponseEntity<Map<String, Object>> stopIndexing() {
+        Map<String, Object> response = indexingService.stopIndexing()
+                ? Map.of("result", true)
+                : Map.of("result", false, "error", "Индексация не запущена");
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/indexPage")
