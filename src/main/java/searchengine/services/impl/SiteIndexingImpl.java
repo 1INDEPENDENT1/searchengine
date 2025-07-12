@@ -55,7 +55,7 @@ public class SiteIndexingImpl {
                     Thread.sleep(1500);
                 } catch (InterruptedException ignored) {}
             }
-            log.error("Deadlock не удалось обойти после 5 попыток в SiteIndexingImpl");
+            log.error("Deadlock не удалось обойти после 5 попыток в " + siteEntity.getUrl() + pageEntity.getPath());
         }
     }
 
