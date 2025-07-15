@@ -2,6 +2,8 @@ package searchengine.tasks;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import searchengine.models.LemmaEntity;
+import searchengine.models.PageEntity;
 import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.PageRepository;
@@ -26,16 +28,24 @@ public class ScrapTask extends RecursiveAction {
     private final AtomicInteger completedTaskCount;
     private final Semaphore taskSemaphore;
     private final ForkJoinPool pool;
+    private final Set<String> visitedPath;
+    private final Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction;
 
     public static final int MAX_CONCURRENT_TASKS = 12_000;
 
     @Override
     protected void compute() {
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
+
         try {
+            HtmlParser htmlParser = new HtmlParser(url, siteEntity);
             taskSemaphore.acquire();
             totalTaskCount.incrementAndGet();
-            webScraperService.getPageAndSave(url, siteEntity);
-            Set<String> discoveredUrls = new HashSet<>(new HtmlParser(url, siteEntity).getPaths());
+            errorLemmasTransaction.putAll(webScraperService.getPageAndSave(url, siteEntity));
+            visitedPath.add(url);
+            Set<String> discoveredUrls = htmlParser.getPaths();
             processDiscoveredUrls(discoveredUrls);
         } catch (Exception e) {
             log.error("Error processing URL", e);
@@ -50,12 +60,21 @@ public class ScrapTask extends RecursiveAction {
     }
 
     private void processDiscoveredUrls(Set<String> urls) {
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
         List<ScrapTask> tasks = urls.stream()
-                .filter(webScraperService::isNotContainsUrl)
+                .filter(visitedPath::add)
                 .map(u -> new ScrapTask(siteRepo, pageRepo, siteEntity, webScraperService, u,
-                        false, totalTaskCount, completedTaskCount, taskSemaphore, pool))
+                        false, totalTaskCount, completedTaskCount, taskSemaphore, pool, visitedPath, errorLemmasTransaction))
                 .toList();
-        invokeAll(tasks);
+        try {
+            invokeAll(tasks);
+        } catch (CancellationException e) {
+            log.debug("invokeAll cancelled for URL: {}", url);
+        } catch (Exception e) {
+            log.error("Unexpected error in invokeAll", e);
+        }
     }
 
     private void endProcessing() {
