@@ -1,8 +1,9 @@
 package searchengine.services;
 
+import lombok.extern.log4j.Log4j2;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-
 import org.jsoup.select.Elements;
 import searchengine.models.SiteEntity;
 
@@ -16,7 +17,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Log4j2
 public class HtmlParser {
+    private static final int MAX_PATH_LENGTH = 255; // Защита от длинных path
+
     private static final List<String> IMAGE_EXTENSIONS = List.of(
             ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".tiff"
     );
@@ -48,6 +52,7 @@ public class HtmlParser {
     private static final List<String> UNWANTED_KEYWORDS = List.of(
             "javascript:void", "#"
     );
+
     private final String url;
     private final SiteEntity siteEntity;
 
@@ -56,62 +61,66 @@ public class HtmlParser {
         this.siteEntity = siteEntity;
     }
 
-    public Set<String> getPaths() throws IOException, URISyntaxException {
-        Document doc = null;
+    public Set<String> getPaths() throws IOException {
         final String homeUrl = siteEntity.getUrl();
         try {
-            if (!url.equals(homeUrl)) {
-                Jsoup.connect(homeUrl + url);
-            } else {
-                doc = Jsoup.connect(url).get();
-            }
-            if (doc != null) {
-                Elements links = doc.select("a[href]");
+            Document doc = Jsoup.connect(homeUrl + url).get();
+            Elements links = doc.select("a[href]");
 
-                return links.parallelStream()  // Используем параллельные потоки
-                        .map(link -> link.attr("abs:href"))
-                        .filter(this::isValidUrl)
-                        .filter(this::isHtmlPage)
-                        .filter(href -> isSameDomain(href, homeUrl))
-                        .map(this::getAbsolutePath)
-                        .collect(Collectors.toSet());
+            return links.stream()
+                    .map(link -> link.attr("abs:href"))
+                    .filter(this::isValidUrl)
+                    .filter(href -> isSameDomain(href, homeUrl))
+                    .map(this::getCleanedUrl)
+                    .filter(this::isHtmlPage)
+                    .filter(this::isAcceptableLength)
+                    .collect(Collectors.toSet());
+
+        } catch (IOException e) {
+            if (e instanceof HttpStatusException statusEx) {
+                log.warn("Status error {} for: {}", statusEx.getStatusCode(), homeUrl + url);
+            } else if (e instanceof SocketTimeoutException) {
+                log.warn("Timeout while connecting to: {}", url);
+            } else {
+                log.warn("Other IO error: {}", e.getMessage());
             }
-        } catch (SocketTimeoutException ignored) {
         }
         return new HashSet<>();
     }
 
     private boolean isValidUrl(final String url) {
-        return url.startsWith("http://") || url.startsWith("https://");
+        return url != null && (url.startsWith("http://") || url.startsWith("https://"));
     }
 
     private boolean isSameDomain(final String childUrl, String baseURIStr) {
-        URI childURI;
-        URI baseURI;
         try {
-            childURI = new URI(childUrl);
-            baseURI = new URI(baseURIStr);
+            URI childURI = new URI(childUrl);
+            URI baseURI = new URI(baseURIStr);
+            return childURI.getHost() != null && baseURI.getHost() != null && childURI.getHost().contains(baseURI.getHost());
         } catch (URISyntaxException e) {
             return false;
         }
-        return childURI.getHost().contains(baseURI.getHost());
     }
 
-    private String getAbsolutePath(final String url) {
+    private String getCleanedUrl(String url) {
         try {
-            String[] path = new URI(url).getPath().split("\\?");
-            return path[0];
+            URI uri = new URI(url);
+            String path = uri.getPath();
+            if (path == null || path.isBlank()) {
+                return "/";
+            }
+            return path;
         } catch (URISyntaxException e) {
             return "/";
         }
     }
 
-    private boolean isHtmlPage(String url) {
+    public boolean isHtmlPage(String url) {
         return !hasUnwantedExtension(url) && !containsUnwantedKeywords(url);
     }
 
-    private boolean hasUnwantedExtension(String url) {
-        String lowerCaseUrl = url.toLowerCase();
+    private static boolean hasUnwantedExtension(String url) {
+        String lowerUrl = url.toLowerCase();  // Приведение к нижнему регистру
         return Stream.of(
                 IMAGE_EXTENSIONS,
                 VIDEO_EXTENSIONS,
@@ -120,12 +129,19 @@ public class HtmlParser {
                 ARCHIVE_EXTENSIONS,
                 EXECUTABLE_EXTENSIONS,
                 SCRIPT_AND_STYLE_EXTENSIONS
-        ).flatMap(List::stream).anyMatch(lowerCaseUrl::endsWith);
+        ).flatMap(List::stream).anyMatch(lowerUrl::endsWith);
     }
 
-    private boolean containsUnwantedKeywords(String url) {
-        String lowerCaseUrl = url.toLowerCase();
-        return UNWANTED_KEYWORDS.stream().anyMatch(lowerCaseUrl::contains);
+
+    private static boolean containsUnwantedKeywords(String url) {
+        return UNWANTED_KEYWORDS.stream().anyMatch(url::contains);
+    }
+
+    private boolean isAcceptableLength(String path) {
+        if (path.length() > MAX_PATH_LENGTH) {
+            log.warn("Filtered out too long path: {}", path);
+            return false;
+        }
+        return true;
     }
 }
-
