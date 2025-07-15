@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.UnexpectedRollbackException;
+import searchengine.models.LemmaEntity;
 import searchengine.models.PageEntity;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
@@ -17,6 +18,8 @@ import searchengine.repos.SiteRepository;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 import searchengine.models.SiteEntity;
 import searchengine.services.impl.SafeIndexingService;
@@ -30,6 +33,7 @@ public class WebScraperService {
     private final PageRepository pageRepo;
     @Autowired
     SiteIndexingImpl siteIndexingImpl;
+    @Autowired
     SafeIndexingService safeIndexingService;
 
     private Connection.Response fetchDocument(String path, SiteEntity siteEntity) {
@@ -49,53 +53,45 @@ public class WebScraperService {
         return null;
     }
 
-    public void getPageAndSave(String path, SiteEntity siteEntity) {
+    public Map<PageEntity, Map<LemmaEntity, Integer>> getPageAndSave(String path, SiteEntity siteEntity) {
         try {
             Connection.Response response = fetchDocument(path, siteEntity);
             if (response != null) {
                 Document document = response.parse();
                 int statusCode = response.statusCode();
-                saveUrlPage(path, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
+                return saveUrlPage(path, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
             }
-        } catch (
-                HttpStatusException e) {
+        } catch (HttpStatusException e) {
             log.error("HTTP error while fetching URL: {}, Status: {}", path, e.getStatusCode());
             saveUrlPage(path, e.getMessage(), e.getStatusCode(), siteEntity);
             throw new RuntimeException("HTTP error fetching URL: " + path, e);
-        } catch (
-                IOException e) {
+        } catch (IOException e) {
             log.error("IO error while fetching URL: {}", path, e);
             saveUrlPage(path, e.getMessage(), 500, siteEntity);
             throw new RuntimeException("IO error fetching URL: " + path, e);
         }
+        return null;
     }
 
-    private void saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
+    private Map<PageEntity, Map<LemmaEntity, Integer>> saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
         if (isNotContainsUrl(checkingUrl)) {
             PageEntity page = new PageEntity(siteEntity, checkingUrl);
             page.setContent(pageContent);
             page.setCode(statusCode);
             siteEntity.setStatusTime(LocalDateTime.now());
+            log.info("Saving url \"{}\"", checkingUrl);
+            pageRepo.save(page);
+            siteRepo.save(siteEntity);
             try {
-                log.info("Saving url \"{}\"", checkingUrl);
-                pageRepo.save(page);
-                siteRepo.save(siteEntity);
-                try {
-                    if (statusCode == 200) {
-                        siteIndexingImpl.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
-                    }
-                } catch (UnexpectedRollbackException e) {
-                    log.warn("Rollback detected. Trying fallback...");
-                    try {
-                        safeIndexingService.saveTextWithNewTransaction(pageContent, siteEntity, page);
-                    } catch (Exception ex) {
-                        log.error("Fallback also failed. Skipping: {}", ex.getMessage());
-                    }
+                if (statusCode == 200) {
+                    Map<LemmaEntity, Integer> lemmaAndCount = siteIndexingImpl.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
+                    return Map.of(page, lemmaAndCount);
                 }
             } catch (Exception e) {
                 log.error(e.getMessage());
             }
         }
+        return null;
     }
 
     public boolean isNotContainsUrl(String path) {
@@ -110,11 +106,7 @@ public class WebScraperService {
     }
 
     private String getFullUrl(String path, SiteEntity siteEntity) {
-        if (!siteEntity.getUrl().equals(path)) {
-            return siteEntity.getUrl() + path;
-        } else {
-            return path;
-        }
+        return siteEntity.getUrl() + path;
     }
 }
 

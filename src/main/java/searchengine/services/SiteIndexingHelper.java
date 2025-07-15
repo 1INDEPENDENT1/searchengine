@@ -14,6 +14,7 @@ import searchengine.tasks.ScrapTask;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,7 +38,7 @@ public class SiteIndexingHelper {
         AtomicInteger completedCount = new AtomicInteger();
         Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
         return new ScrapTask(siteRepo, pageRepo, site, webScraperService,
-                "", true, totalCount, completedCount, semaphore, pool);
+                "", true, totalCount, completedCount, semaphore, pool, ConcurrentHashMap.newKeySet(), new ConcurrentHashMap<>());
     }
 
     private void clearExistingData(SiteEntity site) {

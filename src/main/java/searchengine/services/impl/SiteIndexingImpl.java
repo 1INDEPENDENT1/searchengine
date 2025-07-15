@@ -12,6 +12,7 @@ import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.enums.LangEnum;
 import searchengine.models.IndexesEntity;
@@ -40,23 +41,27 @@ public class SiteIndexingImpl {
     }
 
     @Transactional
-    public void saveTextToLemmasAndIndexes(final String pageText, SiteEntity siteEntity, PageEntity pageEntity) {
+    public Map<LemmaEntity, Integer> saveTextToLemmasAndIndexes(final String pageText, SiteEntity siteEntity, PageEntity pageEntity) {
+        Map<LemmaEntity, Integer> lemmasAndCountWithKey =
+                getLemmasAndCountWithKey(sortWordsOnRussianAndEnglishWords(pageText), siteEntity);
         int attempts = 0;
-        while (attempts < 5) {
+        while (attempts < 2) {
             try {
-                addOrUpdateLemmas(sortWordsOnRussianAndEnglishWords(pageText), siteEntity, pageEntity);
-                return;
+                addOrUpdateLemmas(lemmasAndCountWithKey, siteEntity, pageEntity);
+                return null;
             } catch (Exception e) {
                 if (!isDeadlockException(e)) {
                     throw e;
                 }
                 attempts++;
                 try {
-                    Thread.sleep(1500);
-                } catch (InterruptedException ignored) {}
+                    Thread.sleep(2000);
+                } catch (InterruptedException ignored) {
+                }
             }
             log.error("Deadlock не удалось обойти после 5 попыток в " + siteEntity.getUrl() + pageEntity.getPath());
         }
+        return lemmasAndCountWithKey;
     }
 
     private boolean isDeadlockException(Exception e) {
@@ -140,16 +145,33 @@ public class SiteIndexingImpl {
 
     //Todo: вынести в отдельный метод
     @Transactional
-    public void addOrUpdateLemmas(HashMap<String, Integer> lemmaTexts, final SiteEntity siteEntity, final PageEntity page) {
-        List<LemmaEntity> existingLemmas = lemmaRepository.findByLemmaIn(new ArrayList<>(lemmaTexts.keySet()), siteEntity.getId());
-        Map<String, Map.Entry<LemmaEntity, Integer>> lemmasAndCountWithKey = new HashMap<>();
-        int siteId = siteEntity.getId();
+    public void addOrUpdateLemmas(Map<LemmaEntity, Integer> lemmaAndCountOnPage, SiteEntity siteEntity, PageEntity page) {
+        batchInsertOrUpdate(new ArrayList<>(lemmaAndCountOnPage.keySet()));
 
+        List<LemmaEntity> reloadedLemmas = lemmaRepository.findByLemmaIn(
+                lemmaAndCountOnPage.keySet().stream().map(LemmaEntity::getLemma).toList(),
+                siteEntity.getId()
+        );
+
+        Map<LemmaEntity, Integer> reloadedLemmaAndCount = new HashMap<>();
+        for (LemmaEntity reloadedLemma : reloadedLemmas) {
+            lemmaAndCountOnPage.entrySet().stream()
+                    .filter(entry -> entry.getKey().getLemma().equals(reloadedLemma.getLemma()))
+                    .findFirst()
+                    .ifPresent(entry -> reloadedLemmaAndCount.put(reloadedLemma, entry.getValue()));
+        }
+
+        batchInsertOrUpdateIndexes(addIndexes(reloadedLemmaAndCount, page));
+    }
+
+    private Map<LemmaEntity, Integer> getLemmasAndCountWithKey(HashMap<String, Integer> lemmaTexts, SiteEntity siteEntity) {
+        List<LemmaEntity> existingLemmas = lemmaRepository.findByLemmaIn(new ArrayList<>(lemmaTexts.keySet()), siteEntity.getId());
+        Map<LemmaEntity, Integer> lemmasAndCount = new HashMap<>();
         for (LemmaEntity lemma : existingLemmas) {
             Integer count = lemmaTexts.get(lemma.getLemma());
             if (count != null) {
                 lemma.setFrequency(lemma.getFrequency() + 1);
-                lemmasAndCountWithKey.put(lemma.getLemma(), Map.entry(lemma, count));
+                lemmasAndCount.put(lemma, count);
                 lemmaTexts.remove(lemma.getLemma());
             }
         }
@@ -159,21 +181,9 @@ public class SiteIndexingImpl {
             lemmaEntity.setLemma(lemma);
             lemmaEntity.setFrequency(1);
             lemmaEntity.setSiteEntity(siteEntity);
-            lemmasAndCountWithKey.put(lemmaEntity.getLemma(), Map.entry(lemmaEntity, count));
+            lemmasAndCount.put(lemmaEntity, count);
         });
-
-        batchInsertOrUpdate(lemmasAndCountWithKey.values().stream().map(Map.Entry::getKey).toList());
-
-        List<LemmaEntity> reloadedLemmas = lemmaRepository.findByLemmaIn(lemmasAndCountWithKey.keySet().stream().toList(), siteId);
-        Map<LemmaEntity, Integer> lemmaAndCount = new HashMap<>();
-        for (LemmaEntity lemma : reloadedLemmas) {
-            Map.Entry<LemmaEntity, Integer> entryLemmaAndCount = lemmasAndCountWithKey.getOrDefault(lemma.getLemma(), null);
-            if (entryLemmaAndCount != null) {
-                lemmaAndCount.put(lemma, entryLemmaAndCount.getValue());
-            }
-        }
-
-        batchInsertOrUpdateIndexes(addIndexes(lemmaAndCount, page));
+        return lemmasAndCount;
     }
 
     public List<IndexesEntity> addIndexes(Map<LemmaEntity, Integer> lemmaTexts, PageEntity page) {
@@ -195,6 +205,13 @@ public class SiteIndexingImpl {
             return;
         }
 
+        lemmas = new ArrayList<>(lemmas);
+
+        lemmas.sort(
+                Comparator.comparing(LemmaEntity::getLemma)
+                        .thenComparing(l -> l.getSiteEntity().getId())
+        );
+
         StringBuilder queryBuilder = new StringBuilder("INSERT INTO lemmas (lemma, site_id, frequency) VALUES ");
 
         for (LemmaEntity lemma : lemmas) {
@@ -210,6 +227,7 @@ public class SiteIndexingImpl {
 
         // Используем EntityManager, так как `@Query` не поддерживает динамический SQL
         entityManager.createNativeQuery(sql).executeUpdate();
+
     }
 
     public void batchInsertOrUpdateIndexes(List<IndexesEntity> indexes) {
