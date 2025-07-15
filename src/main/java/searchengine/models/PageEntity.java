@@ -9,16 +9,18 @@ import jakarta.persistence.*;
 @Entity
 @Getter
 @Setter
-@Table(name = "page", indexes = {@Index(name = "path_idx", columnList = "path")})
+@Table(name = "page", indexes = {@Index(name = "path_idx", columnList = "path")},
+        uniqueConstraints = {@UniqueConstraint(columnNames = {"site_entity_id", "path"})}
+)
 @NoArgsConstructor
 public class PageEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    @JoinColumn(nullable = false)
+    @JoinColumn(name = "site_entity_id", nullable = false)
     @ManyToOne(cascade = CascadeType.MERGE)
     private SiteEntity siteEntity;
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false)
     private String path;
     @Column(nullable = false)
     private int code;
