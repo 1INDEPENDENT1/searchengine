@@ -1,4 +1,4 @@
-package searchengine.tasks;
+package searchengine.services.tasks;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;

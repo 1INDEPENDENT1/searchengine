@@ -11,7 +11,7 @@ import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
 import searchengine.services.SiteIndexingHelper;
 import searchengine.services.WebScraperService;
-import searchengine.tasks.ScrapTask;
+import searchengine.services.tasks.ScrapTask;
 
 import java.net.MalformedURLException;
 import java.net.URL;

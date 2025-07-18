@@ -10,7 +10,7 @@ import searchengine.repos.IndexesRepository;
 import searchengine.repos.LemmaRepository;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
-import searchengine.tasks.ScrapTask;
+import searchengine.services.tasks.ScrapTask;
 
 import java.time.LocalDateTime;
 import java.util.List;
