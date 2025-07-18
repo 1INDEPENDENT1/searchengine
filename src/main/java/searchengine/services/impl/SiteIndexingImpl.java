@@ -44,24 +44,16 @@ public class SiteIndexingImpl {
     public Map<LemmaEntity, Integer> saveTextToLemmasAndIndexes(final String pageText, SiteEntity siteEntity, PageEntity pageEntity) {
         Map<LemmaEntity, Integer> lemmasAndCountWithKey =
                 getLemmasAndCountWithKey(sortWordsOnRussianAndEnglishWords(pageText), siteEntity);
-        int attempts = 0;
-        while (attempts < 2) {
-            try {
-                addOrUpdateLemmas(lemmasAndCountWithKey, siteEntity, pageEntity);
-                return null;
-            } catch (Exception e) {
-                if (!isDeadlockException(e)) {
-                    throw e;
-                }
-                attempts++;
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException ignored) {
-                }
+
+        try {
+            addOrUpdateLemmas(lemmasAndCountWithKey, siteEntity, pageEntity);
+            return Collections.emptyMap();
+        } catch (Exception e) {
+            if (isDeadlockException(e)) {
+                log.warn("Deadlock detected for page {} — caching for finalization later", pageEntity.getPath());
             }
-            log.error("Deadlock не удалось обойти после 5 попыток в " + siteEntity.getUrl() + pageEntity.getPath());
+            throw new UnexpectedRollbackException("UnexpectedRollbackException in page " + pageEntity.getPath());
         }
-        return lemmasAndCountWithKey;
     }
 
     private boolean isDeadlockException(Exception e) {
@@ -164,7 +156,7 @@ public class SiteIndexingImpl {
         batchInsertOrUpdateIndexes(addIndexes(reloadedLemmaAndCount, page));
     }
 
-    private Map<LemmaEntity, Integer> getLemmasAndCountWithKey(HashMap<String, Integer> lemmaTexts, SiteEntity siteEntity) {
+    public Map<LemmaEntity, Integer> getLemmasAndCountWithKey(HashMap<String, Integer> lemmaTexts, SiteEntity siteEntity) {
         List<LemmaEntity> existingLemmas = lemmaRepository.findByLemmaIn(new ArrayList<>(lemmaTexts.keySet()), siteEntity.getId());
         Map<LemmaEntity, Integer> lemmasAndCount = new HashMap<>();
         for (LemmaEntity lemma : existingLemmas) {
