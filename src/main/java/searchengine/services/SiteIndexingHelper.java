@@ -58,7 +58,7 @@ public class SiteIndexingHelper {
         lemmaRepo.deleteBySiteEntity(site);
     }
 
-    public boolean  isIndexingInProgress() {
+    public boolean isIndexingInProgress() {
         return siteRepo.findAll().stream()
                 .anyMatch(site -> site.getStatus() == SiteStatusType.INDEXING);
     }
