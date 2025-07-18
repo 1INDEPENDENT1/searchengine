@@ -37,8 +37,18 @@ public class SiteIndexingHelper {
         AtomicInteger totalCount = new AtomicInteger();
         AtomicInteger completedCount = new AtomicInteger();
         Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
-        return new ScrapTask(siteRepo, pageRepo, site, webScraperService,
-                "", true, totalCount, completedCount, semaphore, pool, ConcurrentHashMap.newKeySet(), new ConcurrentHashMap<>());
+        return new ScrapTask(siteRepo,
+                pageRepo,
+                site,
+                webScraperService,
+                "",
+                true,
+                totalCount,
+                completedCount,
+                semaphore,
+                pool,
+                ConcurrentHashMap.newKeySet(),
+                new ConcurrentHashMap<>());
     }
 
     private void clearExistingData(SiteEntity site) {
