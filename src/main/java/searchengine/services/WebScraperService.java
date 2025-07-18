@@ -33,8 +33,6 @@ public class WebScraperService {
     private final PageRepository pageRepo;
     @Autowired
     SiteIndexingImpl siteIndexingImpl;
-    @Autowired
-    SafeIndexingService safeIndexingService;
 
     private Connection.Response fetchDocument(String path, SiteEntity siteEntity) {
         String url = getFullUrl(path, siteEntity);
