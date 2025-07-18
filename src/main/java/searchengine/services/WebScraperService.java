@@ -7,23 +7,18 @@ import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.UnexpectedRollbackException;
 import searchengine.models.LemmaEntity;
 import searchengine.models.PageEntity;
+import searchengine.models.SiteEntity;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
-
+import searchengine.services.impl.SiteIndexingImpl;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.Map;
-
-import searchengine.models.SiteEntity;
-import searchengine.services.impl.SafeIndexingService;
-import searchengine.services.impl.SiteIndexingImpl;
 
 @Service
 @RequiredArgsConstructor
@@ -83,13 +78,35 @@ public class WebScraperService {
             try {
                 if (statusCode == 200) {
                     Map<LemmaEntity, Integer> lemmaAndCount = siteIndexingImpl.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
-                    return Map.of(page, lemmaAndCount);
+                    return lemmaAndCount.isEmpty() ? null : Map.of(page, lemmaAndCount);
                 }
-            } catch (Exception e) {
-                log.error(e.getMessage());
+            } catch (UnexpectedRollbackException ure) {
+                log.warn("UnexpectedRollbackException — caching lemma batch for page {}", page.getId());
+                return Map.of(page, siteIndexingImpl.getLemmasAndCountWithKey(
+                        siteIndexingImpl.sortWordsOnRussianAndEnglishWords(pageContent),
+                        siteEntity
+                ));
             }
         }
         return null;
+    }
+
+    public void finalizeFailedLemmaBatches(
+            Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction,
+            SiteEntity siteEntity
+    ) {
+        for (Map.Entry<PageEntity, Map<LemmaEntity, Integer>> entry : errorLemmasTransaction.entrySet()) {
+            PageEntity pageEntity = entry.getKey();
+            Map<LemmaEntity, Integer> lemmaAndCount = entry.getValue();
+
+            if (!lemmaAndCount.isEmpty()) {
+                try {
+                    siteIndexingImpl.addOrUpdateLemmas(lemmaAndCount, siteEntity, pageEntity);
+                } catch (Exception e) {
+                    log.error("Error finalizing batch for page {}: {}", pageEntity.getId(), e.getMessage());
+                }
+            }
+        }
     }
 
     public boolean isNotContainsUrl(String path) {
