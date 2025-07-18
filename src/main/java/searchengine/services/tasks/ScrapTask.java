@@ -43,7 +43,10 @@ public class ScrapTask extends RecursiveAction {
             HtmlParser htmlParser = new HtmlParser(url, siteEntity);
             taskSemaphore.acquire();
             totalTaskCount.incrementAndGet();
-            errorLemmasTransaction.putAll(webScraperService.getPageAndSave(url, siteEntity));
+            Map<PageEntity, Map<LemmaEntity, Integer>> tempLemmasTransactions = webScraperService.getPageAndSave(url, siteEntity);
+            if (tempLemmasTransactions != null) {
+                errorLemmasTransaction.putAll(tempLemmasTransactions);
+            }
             visitedPath.add(url);
             Set<String> discoveredUrls = htmlParser.getPaths();
             processDiscoveredUrls(discoveredUrls);
@@ -65,9 +68,18 @@ public class ScrapTask extends RecursiveAction {
         }
         List<ScrapTask> tasks = urls.stream()
                 .filter(visitedPath::add)
-                .map(u -> new ScrapTask(siteRepo, pageRepo, siteEntity, webScraperService, u,
-                        false, totalTaskCount, completedTaskCount, taskSemaphore, pool, visitedPath, errorLemmasTransaction))
-                .toList();
+                .map(url -> new ScrapTask(siteRepo,
+                        pageRepo,
+                        siteEntity,
+                        webScraperService,
+                        url,
+                        false,
+                        totalTaskCount,
+                        completedTaskCount,
+                        taskSemaphore,
+                        pool,
+                        visitedPath,
+                        errorLemmasTransaction)).toList();
         try {
             invokeAll(tasks);
         } catch (CancellationException e) {
@@ -81,6 +93,11 @@ public class ScrapTask extends RecursiveAction {
         if (completedTaskCount.get() == totalTaskCount.get()) {
             synchronized (this) {
                 if (!pool.isShutdown()) {
+                    if (!errorLemmasTransaction.isEmpty()) {
+                        log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
+                        webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
+                    }
+
                     pool.shutdown();
                     log.info("All tasks completed.");
                     siteEntity.setStatus(SiteStatusType.INDEXED);
