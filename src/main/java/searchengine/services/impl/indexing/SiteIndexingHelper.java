@@ -33,7 +33,6 @@ public class SiteIndexingHelper {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
-        clearExistingData(site);
         AtomicInteger totalCount = new AtomicInteger();
         AtomicInteger completedCount = new AtomicInteger();
         Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
@@ -51,11 +50,13 @@ public class SiteIndexingHelper {
                 new ConcurrentHashMap<>());
     }
 
-    private void clearExistingData(SiteEntity site) {
+    @Transactional
+    public void clearExistingData(SiteEntity site) {
         List<LemmaEntity> lemmas = lemmaRepo.findBySiteEntity(site);
         indexRepo.deleteByLemmaEntityIn(lemmas);
         pageRepo.deleteBySiteEntity(site);
         lemmaRepo.deleteBySiteEntity(site);
+        siteRepo.delete(site);
     }
 
     public boolean isIndexingInProgress() {

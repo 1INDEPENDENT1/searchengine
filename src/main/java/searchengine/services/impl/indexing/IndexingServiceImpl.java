@@ -46,17 +46,8 @@ public class IndexingServiceImpl implements IndexingService {
             List<Site> sitesList = sites.getSites();
             List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
 
-            List<SiteEntity> notIndexedEntities = entities.stream()
-                    .filter(siteEntity -> !siteEntity.getStatus().equals(SiteStatusType.INDEXED))
-                    .toList();
-
-            if (notIndexedEntities.isEmpty()) {
-                log.info("Нет сайтов для индексации — все уже INDEXED.");
-                return false;
-            }
-
-            for (SiteEntity siteEntity : notIndexedEntities) {
-                int parallelism = Math.max(2, Runtime.getRuntime().availableProcessors() / notIndexedEntities.size());
+            for (SiteEntity siteEntity : entities) {
+                int parallelism = Math.max(2, Runtime.getRuntime().availableProcessors() / entities.size());
                 ForkJoinPool pool = new ForkJoinPool(parallelism);
                 forkJoinPools.add(pool);
                 ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, pool);
@@ -72,17 +63,15 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private List<SiteEntity> updateOrCreateSiteEntities(final List<Site> sitesList) {
-        final List<SiteEntity> entities = siteRepo.findAll();
-        Map<String, SiteEntity> urlToEntityMap = entities.stream()
-                .collect(Collectors.toMap(SiteEntity::getUrl, Function.identity()));
+        siteRepo.findAll().forEach(siteIndexingHelper::clearExistingData);
 
-        sitesList.forEach(site -> urlToEntityMap.computeIfAbsent(site.getUrl(), url -> {
+        List<SiteEntity> newEntities = new ArrayList<>();
+        sitesList.forEach(site -> {
             SiteEntity newEntity = createNewSiteEntity(site);
-            entities.add(newEntity);
-            return newEntity;
-        }));
+            newEntities.add(newEntity);
+        });
 
-        return entities;
+        return newEntities;
     }
 
     private SiteEntity createNewSiteEntity(final Site site) {
@@ -125,7 +114,7 @@ public class IndexingServiceImpl implements IndexingService {
         String finalUrlString = urlStr.trim().toLowerCase().replaceAll("www.", "");
         Map<String, Object> response = new HashMap<>();
         try {
-            new URL(finalUrlString);
+            final URL url = new URL(finalUrlString);
             Optional<Site> matchingSite = sites.getSites().stream()
                     .filter(site -> finalUrlString.contains(site.getUrl()))
                     .findFirst();
@@ -149,7 +138,7 @@ public class IndexingServiceImpl implements IndexingService {
             siteEntity.setStatusTime(LocalDateTime.now());
             siteRepo.save(siteEntity);
             log.info("Indexing page '{}'", siteConfig.getUrl());
-            webScraperService.reindexPage(finalUrlString, siteEntity);
+            webScraperService.reindexPage(url.getPath(), siteEntity);
 
             response.put("result", true);
         } catch (MalformedURLException e) {
