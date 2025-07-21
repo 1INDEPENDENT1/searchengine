@@ -161,15 +161,14 @@ public class SearchService {
         String text = Jsoup.parse(content).text();
 
         String[] words = text.split("\\s+");
-        int contextSize = 20; // сколько слов слева и справа от совпадения
-
+        int contextSize = 20;
         OptionalInt matchIndexOpt = IntStream.range(0, words.length)
                 .filter(i -> lemmas.stream()
                         .anyMatch(lemma -> siteIndexingImpl.getZeroForm(words[i]).toLowerCase().contains(lemma.toLowerCase())))
                 .findFirst();
 
         if (matchIndexOpt.isEmpty()) {
-            return ""; // ничего не нашли
+            return "";
         }
 
         int matchIndex = matchIndexOpt.getAsInt();
@@ -180,8 +179,13 @@ public class SearchService {
         StringBuilder snippet = new StringBuilder();
         for (int i = start; i < end; i++) {
             String word = words[i];
-            if (i == matchIndex) {
-                String cleanWord = words[i].replaceAll("\\p{Punct}", "");
+
+            String finalWord = word;
+            boolean shouldHighlight = lemmas.stream()
+                    .anyMatch(lemma -> siteIndexingImpl.getZeroForm(finalWord).toLowerCase().contains(lemma.toLowerCase()));
+
+            if (shouldHighlight) {
+                String cleanWord = word.replaceAll("\\p{Punct}", "");
                 word = word.replaceAll("(?i)(" + cleanWord + ")", "<b>$1</b>");
             }
 
@@ -190,4 +194,4 @@ public class SearchService {
 
         return snippet.toString().trim() + "...";
     }
-}
+    }
