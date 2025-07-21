@@ -107,7 +107,15 @@ public class HtmlParser {
             URI uri = new URI(url);
             String path = uri.getPath();
             if (path == null || path.isBlank()) {
-                return "/";
+                return  "/";
+            }
+            path = path.replaceAll("/{2,}", "/");
+            if (!path.startsWith("/")) {
+                path = "/" + path;
+            }
+            String query = uri.getQuery();
+            if (query != null && !query.isBlank()) {
+                path += "?" + query;
             }
             return path;
         } catch (URISyntaxException e) {
@@ -120,7 +128,7 @@ public class HtmlParser {
     }
 
     private static boolean hasUnwantedExtension(String url) {
-        String lowerUrl = url.toLowerCase();  // Приведение к нижнему регистру
+        String lowerUrl = url.toLowerCase();
         return Stream.of(
                 IMAGE_EXTENSIONS,
                 VIDEO_EXTENSIONS,
