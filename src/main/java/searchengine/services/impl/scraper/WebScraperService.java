@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl.scraper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -14,7 +14,6 @@ import searchengine.models.PageEntity;
 import searchengine.models.SiteEntity;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
-import searchengine.services.impl.SiteIndexingImpl;
 
 import java.io.IOException;
 import java.time.LocalDateTime;

@@ -1,4 +1,4 @@
-package searchengine.services.impl;
+package searchengine.services.impl.indexing;
 
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,17 +9,14 @@ import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
-import searchengine.services.SiteIndexingHelper;
-import searchengine.services.WebScraperService;
-import searchengine.services.tasks.ScrapTask;
+import searchengine.services.impl.scraper.WebScraperService;
+import searchengine.services.impl.scraper.ScrapTask;
 
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 @Log4j2

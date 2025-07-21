@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl.indexing;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -10,7 +10,8 @@ import searchengine.repos.IndexesRepository;
 import searchengine.repos.LemmaRepository;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
-import searchengine.services.tasks.ScrapTask;
+import searchengine.services.impl.scraper.ScrapTask;
+import searchengine.services.impl.scraper.WebScraperService;
 
 import java.time.LocalDateTime;
 import java.util.List;

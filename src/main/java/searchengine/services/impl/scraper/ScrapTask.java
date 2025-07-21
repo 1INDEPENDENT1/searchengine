@@ -1,4 +1,4 @@
-package searchengine.services.tasks;
+package searchengine.services.impl.scraper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -8,8 +8,6 @@ import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
-import searchengine.services.HtmlParser;
-import searchengine.services.WebScraperService;
 
 import java.util.*;
 import java.util.concurrent.*;

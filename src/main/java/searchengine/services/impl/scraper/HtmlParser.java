@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl.scraper;
 
 import lombok.extern.log4j.Log4j2;
 import org.jsoup.HttpStatusException;
@@ -50,7 +50,7 @@ public class HtmlParser {
     );
 
     private static final List<String> UNWANTED_KEYWORDS = List.of(
-            "javascript:void", "#"
+            "javascript:void"
     );
 
     private final String url;

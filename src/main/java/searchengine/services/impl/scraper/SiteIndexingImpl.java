@@ -1,4 +1,4 @@
-package searchengine.services.impl;
+package searchengine.services.impl.scraper;
 
 import java.io.IOException;
 import java.util.*;
