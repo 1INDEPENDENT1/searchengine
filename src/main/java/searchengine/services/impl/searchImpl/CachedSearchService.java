@@ -1,33 +1,37 @@
-package searchengine.services.impl;
+package searchengine.services.impl.searchImpl;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import searchengine.dto.index.SearchResultDto;
-import searchengine.dto.statistics.SearchResponse;
+
 import searchengine.models.*;
 import searchengine.repos.*;
+import searchengine.services.impl.scraper.SiteIndexingImpl;
 
 import java.util.*;
 import java.util.stream.IntStream;
 
+
 @Service
 @RequiredArgsConstructor
-public class SearchService {
+public class CachedSearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexesRepository indexesRepository;
     private final SiteRepository siteRepository;
     private final SiteIndexingImpl siteIndexingImpl;
 
-    public SearchResponse search(String query, String siteUrl, int offset, int limit) {
+    @Cacheable(value = "searchResults", key = "#query + '|' + (#siteUrl != null ? #siteUrl : '')")
+    public List<SearchResultDto> getAllResults(String query, String siteUrl) {
         List<String> lemmas = siteIndexingImpl
                 .sortWordsOnRussianAndEnglishWords(query)
                 .keySet().stream().toList();
 
         if (lemmas.isEmpty()) {
-            return SearchResponse.error("По запросу не найдено значимых слов");
+            return List.of();
         }
 
         List<SiteEntity> sites = (siteUrl != null)
@@ -40,26 +44,18 @@ public class SearchService {
             if (filtered == null) continue;
 
             List<IndexesEntity> allIndexes = indexesRepository.findByLemmaEntityIn(filtered);
-
             Map<LemmaEntity, Map<PageEntity, List<IndexesEntity>>> lemmaToPageIndexes = getLemmaEntityWithInfo(allIndexes);
-
             Map<PageEntity, List<IndexesEntity>> pageToIndexesMap = findCommonPagesForAllLemmas(filtered, lemmaToPageIndexes);
-
             if (pageToIndexesMap.isEmpty()) continue;
-
             relevanceMap.putAll(getAbsRelevant(pageToIndexesMap));
         }
 
-        List<SearchResultDto> results = createSearchResultDto(offset, limit, relevanceMap, lemmas);
-
-        return new SearchResponse(true, relevanceMap.size(), results);
+        return createSearchResultDto(relevanceMap, lemmas);
     }
 
-    private List<SearchResultDto> createSearchResultDto(int offset, int limit, Map<PageEntity, Float> relevanceMap, List<String> lemmas) {
+    private List<SearchResultDto> createSearchResultDto(Map<PageEntity, Float> relevanceMap, List<String> lemmas) {
         return relevanceMap.entrySet().stream()
                 .sorted((a, b) -> Float.compare(b.getValue(), a.getValue()))
-                .skip(offset)
-                .limit(limit)
                 .map(entry -> {
                     PageEntity page = entry.getKey();
                     SiteEntity site = page.getSiteEntity();
@@ -194,4 +190,4 @@ public class SearchService {
 
         return snippet.toString().trim() + "...";
     }
-    }
+}
