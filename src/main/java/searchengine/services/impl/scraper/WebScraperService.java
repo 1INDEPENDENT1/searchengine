@@ -66,7 +66,7 @@ public class WebScraperService {
     }
 
     private Map<PageEntity, Map<LemmaEntity, Integer>> saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
-        if (isNotContainsUrl(checkingUrl)) {
+        if (isNotContainsUrl(checkingUrl, siteEntity)) {
             PageEntity page = new PageEntity(siteEntity, checkingUrl);
             page.setContent(pageContent);
             page.setCode(statusCode);
@@ -108,8 +108,8 @@ public class WebScraperService {
         }
     }
 
-    public boolean isNotContainsUrl(String path) {
-        return pageRepo.findByPath(path) == null;
+    public boolean isNotContainsUrl(String path, SiteEntity siteEntity) {
+        return pageRepo.findByPathAndSiteEntity(path, siteEntity) == null;
     }
 
     public void reindexPage(String path, SiteEntity siteEntity) {
