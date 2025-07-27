@@ -1,33 +1,37 @@
 package searchengine.services.impl.indexing;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import searchengine.models.LemmaEntity;
 import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
-import searchengine.repos.IndexesRepository;
-import searchengine.repos.LemmaRepository;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 import searchengine.services.impl.scraper.ScrapTask;
 import searchengine.services.impl.scraper.WebScraperService;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RequiredArgsConstructor
 @Service
 public class SiteIndexingHelper {
-    private final LemmaRepository lemmaRepo;
-    private final IndexesRepository indexRepo;
+    @PersistenceContext
+    private EntityManager entityManager;
     private final PageRepository pageRepo;
     private final SiteRepository siteRepo;
     private final WebScraperService webScraperService;
+    private final DbCleaner dbCleaner;
+
+    @Transactional
+    public void clearDatabase() {
+        dbCleaner.truncateAll();
+        entityManager.clear();
+    }
 
     @Transactional
     public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool, AtomicInteger activeTaskCount) {
@@ -43,19 +47,17 @@ public class SiteIndexingHelper {
                 true,
                 pool,
                 ConcurrentHashMap.newKeySet(),
-                new ConcurrentHashMap<>());
                 new ConcurrentHashMap<>(),
                 activeTaskCount
         );
     }
 
     @Transactional
-    public void clearExistingData(SiteEntity site) {
-        List<LemmaEntity> lemmas = lemmaRepo.findBySiteEntity(site);
-        indexRepo.deleteByLemmaEntityIn(lemmas);
-        pageRepo.deleteBySiteEntity(site);
-        lemmaRepo.deleteBySiteEntity(site);
-        siteRepo.delete(site);
+    public void setManualStopStatus(SiteEntity site) {
+        site.setStatus(SiteStatusType.FAILED);
+        site.setStatusTime(LocalDateTime.now());
+        site.setLastError("Индексация была остановлена вручную");
+        siteRepo.save(site);
     }
 
     public boolean isIndexingInProgress() {
