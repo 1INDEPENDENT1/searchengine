@@ -96,33 +96,54 @@ public class HtmlParser {
         try {
             URI childURI = new URI(childUrl);
             URI baseURI = new URI(baseURIStr);
-            return childURI.getHost() != null && baseURI.getHost() != null && childURI.getHost().contains(baseURI.getHost());
+            String childHost = childURI.getHost();
+            String baseHost = baseURI.getHost();
+
+            if (childHost == null || baseHost == null) {
+                return false;
+            }
+
+            return childHost.equalsIgnoreCase(baseHost);
         } catch (URISyntaxException e) {
             return false;
         }
     }
 
-    private String getCleanedUrl(String url) {
+    private String getCleanedUrl(String fullUrl) {
         try {
-            URI uri = new URI(url);
+            URI siteUri = new URI(siteEntity.getUrl());
+            String sitePath = siteUri.getPath();
+            if (sitePath == null) sitePath = "";
+
+            URI uri = new URI(fullUrl);
             String path = uri.getPath();
             if (path == null || path.isBlank()) {
-                return  "/";
+                return "/";
             }
+
             path = path.replaceAll("/{2,}", "/");
             if (!path.startsWith("/")) {
                 path = "/" + path;
             }
+
+            if (!sitePath.isBlank() && path.startsWith(sitePath)) {
+                path = path.substring(sitePath.length());
+                if (!path.startsWith("/")) {
+                    path = "/" + path;
+                }
+            }
+
             String query = uri.getQuery();
             if (query != null && !query.isBlank()) {
                 path += "?" + query;
             }
+
             return path;
+
         } catch (URISyntaxException e) {
             return "/";
         }
     }
-
     public boolean isHtmlPage(String url) {
         return !hasUnwantedExtension(url) && !containsUnwantedKeywords(url);
     }
