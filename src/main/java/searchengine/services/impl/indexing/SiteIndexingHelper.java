@@ -30,25 +30,23 @@ public class SiteIndexingHelper {
     private final WebScraperService webScraperService;
 
     @Transactional
-    public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool) {
+    public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool, AtomicInteger activeTaskCount) {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
-        AtomicInteger totalCount = new AtomicInteger();
-        AtomicInteger completedCount = new AtomicInteger();
-        Semaphore semaphore = new Semaphore(ScrapTask.MAX_CONCURRENT_TASKS);
-        return new ScrapTask(siteRepo,
+        return new ScrapTask(
+                siteRepo,
                 pageRepo,
                 site,
                 webScraperService,
                 "",
                 true,
-                totalCount,
-                completedCount,
-                semaphore,
                 pool,
                 ConcurrentHashMap.newKeySet(),
                 new ConcurrentHashMap<>());
+                new ConcurrentHashMap<>(),
+                activeTaskCount
+        );
     }
 
     @Transactional

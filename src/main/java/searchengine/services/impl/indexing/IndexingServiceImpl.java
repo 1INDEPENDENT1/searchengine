@@ -17,6 +17,7 @@ import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @Log4j2
@@ -26,6 +27,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final WebScraperService webScraperService;
     private final SiteIndexingHelper siteIndexingHelper;
     private final List<ForkJoinPool> forkJoinPools = new ArrayList<>();
+    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
 
     @Autowired
@@ -47,7 +49,7 @@ public class IndexingServiceImpl implements IndexingService {
                 int parallelism = Math.max(2, Runtime.getRuntime().availableProcessors() / entities.size());
                 ForkJoinPool pool = new ForkJoinPool(parallelism);
                 forkJoinPools.add(pool);
-                ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, pool);
+                ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, pool, activeTaskCount);
                 pool.submit(task);
             }
 
@@ -60,7 +62,8 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private List<SiteEntity> updateOrCreateSiteEntities(final List<Site> sitesList) {
-        siteRepo.findAll().forEach(siteIndexingHelper::clearExistingData);
+        log.info("Clearing database before indexing...");
+        siteIndexingHelper.clearDatabase();
 
         List<SiteEntity> newEntities = new ArrayList<>();
         sitesList.forEach(site -> {
@@ -81,26 +84,38 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public boolean stopIndexing() {
         if (siteIndexingHelper.isIndexingInProgress()) {
+            log.info("Stopping all indexing pools...");
+
             for (ForkJoinPool pool : forkJoinPools) {
                 pool.shutdownNow();
             }
+
             forkJoinPools.clear();
+
+            log.info("Waiting for all tasks to finish...");
+            int attempts = 0;
+            while (activeTaskCount.get() > 0 && attempts < 5) {
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("Interrupted while waiting for task completion", e);
+                    break;
+                }
+                attempts++;
+            }
+
+            log.info("All tasks reported finished or timeout reached");
 
             List<SiteEntity> indexingSites = siteRepo.findAll().stream()
                     .filter(site -> site.getStatus() == SiteStatusType.INDEXING)
                     .toList();
 
             for (SiteEntity site : indexingSites) {
-                try {
-                    Thread.sleep(3000L);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                site.setStatus(SiteStatusType.FAILED);
-                site.setStatusTime(LocalDateTime.now());
-                site.setLastError("Индексация была остановлена вручную");
-                siteRepo.save(site);
+                siteIndexingHelper.setManualStopStatus(site);
             }
+
+            log.info("Set FAILED status to all indexing sites");
 
             return true;
         }

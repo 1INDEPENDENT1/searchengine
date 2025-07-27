@@ -22,87 +22,86 @@ public class ScrapTask extends RecursiveAction {
     private final WebScraperService webScraperService;
     private final String url;
     private final boolean isRootTask;
-    private final AtomicInteger totalTaskCount;
-    private final AtomicInteger completedTaskCount;
-    private final Semaphore taskSemaphore;
     private final ForkJoinPool pool;
     private final Set<String> visitedPath;
     private final Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction;
-
-    public static final int MAX_CONCURRENT_TASKS = 12_000;
+    private final AtomicInteger activeTaskCount;
 
     @Override
     protected void compute() {
-        if (Thread.currentThread().isInterrupted()) {
-            return;
-        }
+        if (Thread.currentThread().isInterrupted()) return;
+        activeTaskCount.incrementAndGet();
 
         try {
+            log.debug("Task started for URL: {}", url);
+
+            visitedPath.add(url);
             HtmlParser htmlParser = new HtmlParser(url, siteEntity);
-            taskSemaphore.acquire();
-            totalTaskCount.incrementAndGet();
-            Map<PageEntity, Map<LemmaEntity, Integer>> tempLemmasTransactions = webScraperService.getPageAndSave(url, siteEntity);
+            Set<String> discoveredUrls = htmlParser.getPaths();
+
+            processDiscoveredUrls(discoveredUrls);
+
+            Map<PageEntity, Map<LemmaEntity, Integer>> tempLemmasTransactions =
+                    webScraperService.getPageAndSave(url, siteEntity);
+
             if (tempLemmasTransactions != null) {
                 errorLemmasTransaction.putAll(tempLemmasTransactions);
             }
-            visitedPath.add(url);
-            Set<String> discoveredUrls = htmlParser.getPaths();
-            processDiscoveredUrls(discoveredUrls);
-        } catch (Exception e) {
-            log.error("Error processing URL", e);
-        } finally {
-            completedTaskCount.incrementAndGet();
-            taskSemaphore.release();
 
+            log.debug("Task completed for URL: {}", url);
+
+        } catch (Exception e) {
+            log.error("Error processing URL: {}", url, e);
+        } finally {
+            activeTaskCount.decrementAndGet();
             if (isRootTask) {
+                log.info("Finishing processing for site: {}", siteEntity.getName());
                 endProcessing();
             }
         }
     }
 
     private void processDiscoveredUrls(Set<String> urls) {
-        if (Thread.currentThread().isInterrupted()) {
-            return;
-        }
+        if (Thread.currentThread().isInterrupted()) return;
+
         List<ScrapTask> tasks = urls.stream()
                 .filter(visitedPath::add)
-                .map(url -> new ScrapTask(siteRepo,
+                .map(childUrl -> new ScrapTask(
+                        siteRepo,
                         pageRepo,
                         siteEntity,
                         webScraperService,
-                        url,
+                        childUrl,
                         false,
-                        totalTaskCount,
-                        completedTaskCount,
-                        taskSemaphore,
                         pool,
                         visitedPath,
-                        errorLemmasTransaction)).toList();
+                        errorLemmasTransaction,
+                        activeTaskCount
+                ))
+                .toList();
+
         try {
             invokeAll(tasks);
         } catch (CancellationException e) {
             log.debug("invokeAll cancelled for URL: {}", url);
         } catch (Exception e) {
-            log.error("Unexpected error in invokeAll", e);
+            log.error("Unexpected error in invokeAll for URL: {}", url, e);
         }
     }
 
     private void endProcessing() {
-        if (completedTaskCount.get() == totalTaskCount.get()) {
-            synchronized (this) {
-                if (!pool.isShutdown()) {
-                    if (!errorLemmasTransaction.isEmpty()) {
-                        log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
-                        webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
-                    }
-
-                    pool.shutdown();
-                    log.info("All tasks completed.");
-                    siteEntity.setStatus(SiteStatusType.INDEXED);
-                    siteRepo.save(siteEntity);
+        synchronized (this) {
+            if (!pool.isShutdown()) {
+                if (!errorLemmasTransaction.isEmpty()) {
+                    log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
+                    webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
                 }
+
+                pool.shutdown();
+                log.info("All tasks completed for site: {}", siteEntity.getName());
+                siteEntity.setStatus(SiteStatusType.INDEXED);
+                siteRepo.save(siteEntity);
             }
         }
     }
 }
-
