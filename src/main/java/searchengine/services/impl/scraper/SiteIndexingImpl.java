@@ -6,44 +6,38 @@ import java.util.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.log4j.Log4j2;
-import org.apache.lucene.morphology.LuceneMorphology;
-import org.apache.lucene.morphology.WrongCharaterException;
-import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
-import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.annotation.Transactional;
-import searchengine.enums.LangEnum;
 import searchengine.models.IndexesEntity;
 import searchengine.models.LemmaEntity;
 import searchengine.models.PageEntity;
 import searchengine.models.SiteEntity;
 import searchengine.repos.IndexesRepository;
 import searchengine.repos.LemmaRepository;
+import searchengine.services.impl.textWorkers.TextLemmaParser;
 
 
 @Log4j2
 @Service
 public class SiteIndexingImpl {
-    LuceneMorphology morphRU = new RussianLuceneMorphology();
-    LuceneMorphology morphEN = new EnglishLuceneMorphology();
     private final LemmaRepository lemmaRepository;
     private final IndexesRepository indexesRepository;
-    public static List<String> wrongWords = new ArrayList<>();
-
+    private final TextLemmaParser textLemmaParser;
     @PersistenceContext
     private EntityManager entityManager;
 
-    public SiteIndexingImpl(LemmaRepository lemmaRepository, IndexesRepository indexesRepository) throws IOException {
+    public SiteIndexingImpl(LemmaRepository lemmaRepository, IndexesRepository indexesRepository, TextLemmaParser textLemmaParser) throws IOException {
         this.lemmaRepository = lemmaRepository;
         this.indexesRepository = indexesRepository;
+        this.textLemmaParser = textLemmaParser;
     }
 
     @Transactional
     public Map<LemmaEntity, Integer> saveTextToLemmasAndIndexes(final String pageText, SiteEntity siteEntity, PageEntity pageEntity) {
         Map<LemmaEntity, Integer> lemmasAndCountWithKey =
-                getLemmasAndCountWithKey(sortWordsOnRussianAndEnglishWords(pageText), siteEntity);
+                getLemmasAndCountWithKey(textLemmaParser.sortWordsOnRussianAndEnglishWords(pageText), siteEntity);
 
         try {
             addOrUpdateLemmas(lemmasAndCountWithKey, siteEntity, pageEntity);
@@ -60,82 +54,6 @@ public class SiteIndexingImpl {
         return e.getMessage() != null && e.getMessage().contains("Deadlock");
     }
 
-    private boolean isNotServiceWord(String word) {
-        List<String> skipTags = List.of("МЕЖД", "ПРЕДЛ", "СОЮЗ", "ЧАСТ", "PREP", "CONJ", "ART", "PART");
-
-        return skipTags.stream().noneMatch(word::contains);
-    }
-
-    private List<String> removeFunctionsWords(final List<String> words, final LangEnum lang) {
-        List<String> primaryWords = words.stream().map(word -> getMorphInfoSave(word, lang))
-                .filter(word -> !word.isBlank())
-                .filter(this::isNotServiceWord).toList();
-
-        return primaryWords.stream().map(this::getSimpleForm).toList();
-    }
-
-    private String getSimpleForm(final String word) {
-        return word.substring(0, word.indexOf('|')).trim();
-    }
-
-    public HashMap<String, Integer> sortWordsOnRussianAndEnglishWords(final String pageText) {
-        // Разделяем текст на слова, удаляем пунктуацию, пробелы, переводим в нижний регистр
-        List<String> words = Arrays.asList(removeHtmlTags(pageText).split("[ \\t]+")).parallelStream()
-                .map(s -> s.replaceAll("\\p{Punct}", "")) // Удаление пунктуации
-                .map(String::trim)                       // Удаление лишних пробелов
-                .map(String::toLowerCase)                // Перевод в нижний регистр
-                .filter(s -> !s.isEmpty())         // Удаление пустых строк
-                .toList();// Сбор в общий список
-
-        HashMap<String, Integer> map = new HashMap<>();
-
-        // Разделение на английские и русские слова
-        List<String> englishWords = removeFunctionsWords(
-                words.stream()
-                        .filter(s -> s.matches("[a-z]+")) // Слова только из латинских букв
-                        .toList(), LangEnum.ENG);
-
-        englishWords.forEach(word -> map.compute(word, (k, v) -> v == null ? 1 : v + 1));
-
-        List<String> russianWords = removeFunctionsWords(
-                words.stream()
-                        .filter(s -> s.matches("[а-яё]+")) // Слова только из кириллических букв
-                        .toList(), LangEnum.RUS);
-
-        russianWords.forEach(word -> map.compute(word, (k, v) -> v == null ? 1 : v + 1));
-
-        log.debug("Wrong words {}", wrongWords);
-
-        return map;
-    }
-
-    private static String removeHtmlTags(String htmlCode) {
-        return htmlCode != null ? htmlCode.replaceAll("<[^>]*>", "").trim() : null;
-    }
-
-    public String getZeroForm(final String word) {
-        String cleaned = word.replaceAll("[^\\p{IsAlphabetic}]", "").toLowerCase();
-        if (cleaned.matches("[а-яё]+")) {
-            return getSimpleForm(getMorphInfoSave(cleaned, LangEnum.RUS));
-        } else if (cleaned.matches("[a-z]+")) {
-            return getSimpleForm(getMorphInfoSave(cleaned, LangEnum.ENG));
-        }
-        return cleaned;
-    }
-
-    private String getMorphInfoSave(final String word, final LangEnum lang) {
-        String basicWord;
-        try {
-            basicWord = lang == LangEnum.RUS ? morphRU.getMorphInfo(word).get(0) : morphEN.getMorphInfo(word).get(0);
-        } catch (WrongCharaterException e) {
-            log.error(e.getMessage());
-            wrongWords.add(word);
-            return "";
-        }
-        return basicWord;
-    }
-
-    //Todo: вынести в отдельный метод
     @Transactional
     public void addOrUpdateLemmas(Map<LemmaEntity, Integer> lemmaAndCountOnPage, SiteEntity siteEntity, PageEntity page) {
         batchInsertOrUpdate(new ArrayList<>(lemmaAndCountOnPage.keySet()));

@@ -1,6 +1,7 @@
 package searchengine.services.impl.scraper;
 
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.log4j.Log4j2;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
@@ -14,6 +15,7 @@ import searchengine.models.PageEntity;
 import searchengine.models.SiteEntity;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
+import searchengine.services.impl.textWorkers.TextLemmaParser;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -65,6 +67,7 @@ public class WebScraperService {
         return null;
     }
 
+    @SneakyThrows
     private Map<PageEntity, Map<LemmaEntity, Integer>> saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
         if (isNotContainsUrl(checkingUrl, siteEntity)) {
             PageEntity page = new PageEntity(siteEntity, checkingUrl);
@@ -82,7 +85,7 @@ public class WebScraperService {
             } catch (UnexpectedRollbackException ure) {
                 log.warn("UnexpectedRollbackException — caching lemma batch for page {}", page.getId());
                 return Map.of(page, siteIndexingImpl.getLemmasAndCountWithKey(
-                        siteIndexingImpl.sortWordsOnRussianAndEnglishWords(pageContent),
+                        new TextLemmaParser().sortWordsOnRussianAndEnglishWords(pageContent),
                         siteEntity
                 ));
             }
