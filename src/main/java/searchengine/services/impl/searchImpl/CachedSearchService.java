@@ -10,11 +10,9 @@ import searchengine.dto.index.SearchResultDto;
 
 import searchengine.models.*;
 import searchengine.repos.*;
-import searchengine.services.impl.scraper.SiteIndexingImpl;
+import searchengine.services.impl.textWorkers.TextLemmaParser;
 
 import java.util.*;
-import java.util.stream.IntStream;
-
 
 @Service
 @RequiredArgsConstructor
@@ -22,11 +20,12 @@ public class CachedSearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexesRepository indexesRepository;
     private final SiteRepository siteRepository;
-    private final SiteIndexingImpl siteIndexingImpl;
+    private final TextLemmaParser textLemmaParser;
+    private final SnippetGenerator snippetGenerator;
 
     @Cacheable(value = "searchResults", key = "#query + '|' + (#siteUrl != null ? #siteUrl : '')")
     public List<SearchResultDto> getAllResults(String query, String siteUrl) {
-        List<String> lemmas = siteIndexingImpl
+        List<String> lemmas = textLemmaParser
                 .sortWordsOnRussianAndEnglishWords(query)
                 .keySet().stream().toList();
 
@@ -59,7 +58,7 @@ public class CachedSearchService {
                 .map(entry -> {
                     PageEntity page = entry.getKey();
                     SiteEntity site = page.getSiteEntity();
-                    String snippet = generateSnippet(page.getContent(), lemmas);
+                    String snippet = snippetGenerator.generateSnippet(page.getContent(), lemmas);
                     String title = extractTitle(page.getContent());
                     return new SearchResultDto(
                             site.getUrl(), site.getName(),
@@ -151,43 +150,5 @@ public class CachedSearchService {
         } catch (Exception e) {
             return "";
         }
-    }
-
-    private String generateSnippet(String content, List<String> lemmas) {
-        String text = Jsoup.parse(content).text();
-
-        String[] words = text.split("\\s+");
-        int contextSize = 20;
-        OptionalInt matchIndexOpt = IntStream.range(0, words.length)
-                .filter(i -> lemmas.stream()
-                        .anyMatch(lemma -> siteIndexingImpl.getZeroForm(words[i]).toLowerCase().contains(lemma.toLowerCase())))
-                .findFirst();
-
-        if (matchIndexOpt.isEmpty()) {
-            return "";
-        }
-
-        int matchIndex = matchIndexOpt.getAsInt();
-
-        int start = Math.max(0, matchIndex - contextSize);
-        int end = Math.min(words.length, matchIndex + contextSize + 1);
-
-        StringBuilder snippet = new StringBuilder();
-        for (int i = start; i < end; i++) {
-            String word = words[i];
-
-            String finalWord = word;
-            boolean shouldHighlight = lemmas.stream()
-                    .anyMatch(lemma -> siteIndexingImpl.getZeroForm(finalWord).toLowerCase().contains(lemma.toLowerCase()));
-
-            if (shouldHighlight) {
-                String cleanWord = word.replaceAll("\\p{Punct}", "");
-                word = word.replaceAll("(?i)(" + cleanWord + ")", "<b>$1</b>");
-            }
-
-            snippet.append(word).append(" ");
-        }
-
-        return snippet.toString().trim() + "...";
     }
 }
