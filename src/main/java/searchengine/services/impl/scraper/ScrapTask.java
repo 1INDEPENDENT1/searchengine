@@ -88,13 +88,15 @@ public class ScrapTask extends RecursiveAction {
     }
 
     private void endProcessing() {
-        if (!errorLemmasTransaction.isEmpty()) {
-            log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
-            webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
-        }
+        synchronized (this) {
+            if (!errorLemmasTransaction.isEmpty()) {
+                log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
+                webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
+            }
 
-        siteEntity.setStatus(SiteStatusType.INDEXED);
-        siteRepo.save(siteEntity);
-        log.info("Finished indexing site: {}", siteEntity.getName());
+            log.info("All tasks completed for site: {}", siteEntity.getName());
+            siteEntity.setStatus(SiteStatusType.INDEXED);
+            siteRepo.save(siteEntity);
+        }
     }
 }
