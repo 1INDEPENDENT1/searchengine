@@ -2,8 +2,8 @@ server:
   port: 8080
 spring:
   datasource:
-    username: root
-    password: ABZEabze2001!
+    username: *
+    password: *
     url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
   jpa:
     hibernate:
@@ -15,12 +15,14 @@ spring:
 
 indexing-settings:
   sites:
-    - url: https://et-cetera.ru
-      name: Et Cetera
-    - url: https://playback.ru
-      name: PlayBack.Ru
+    - url: https://volochek.life
+      name: Вышний волочек
+    - url: https://nikoartgallery.com
+      name: Креативное пространство и галерея Н.Б. Никогосяна
+    - url: https://et-cetera.ru/mobile
+      name: Ет Сетера Мобайл
 
 logging:
   level:
     org.springframework.aop.framework.JdkDynamicAopProxy: ERROR
-    searchengine.tasks.ScrapTask: ERROR
+    searchengine.services.impl.scraper: DEBUG
