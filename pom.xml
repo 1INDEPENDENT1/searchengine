@@ -87,11 +87,6 @@
             <version>1.5</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.lucene.analysis</groupId>
-            <artifactId>morphology</artifactId>
-            <version>1.5</version>
-        </dependency>
-        <dependency>
             <groupId>org.apache.lucene.morphology</groupId>
             <artifactId>dictionary-reader</artifactId>
             <version>1.5</version>
