@@ -14,7 +14,6 @@ import searchengine.services.impl.scraper.WebScraperService;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RequiredArgsConstructor
@@ -34,7 +33,7 @@ public class SiteIndexingHelper {
     }
 
     @Transactional
-    public ScrapTask prepareIndexingTask(SiteEntity site, ForkJoinPool pool, AtomicInteger activeTaskCount) {
+    public ScrapTask prepareIndexingTask(SiteEntity site, AtomicInteger activeTaskCount) {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
@@ -45,7 +44,6 @@ public class SiteIndexingHelper {
                 webScraperService,
                 "",
                 true,
-                pool,
                 ConcurrentHashMap.newKeySet(),
                 new ConcurrentHashMap<>(),
                 activeTaskCount

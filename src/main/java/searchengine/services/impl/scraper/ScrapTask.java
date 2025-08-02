@@ -10,7 +10,8 @@ import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @RequiredArgsConstructor
@@ -22,7 +23,6 @@ public class ScrapTask extends RecursiveAction {
     private final WebScraperService webScraperService;
     private final String url;
     private final boolean isRootTask;
-    private final ForkJoinPool pool;
     private final Set<String> visitedPath;
     private final Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction;
     private final AtomicInteger activeTaskCount;
@@ -49,7 +49,6 @@ public class ScrapTask extends RecursiveAction {
             }
 
             log.debug("Task completed for URL: {}", url);
-
         } catch (Exception e) {
             log.error("Error processing URL: {}", url, e);
         } finally {
@@ -73,7 +72,6 @@ public class ScrapTask extends RecursiveAction {
                         webScraperService,
                         childUrl,
                         false,
-                        pool,
                         visitedPath,
                         errorLemmasTransaction,
                         activeTaskCount
@@ -90,18 +88,13 @@ public class ScrapTask extends RecursiveAction {
     }
 
     private void endProcessing() {
-        synchronized (this) {
-            if (!pool.isShutdown()) {
-                if (!errorLemmasTransaction.isEmpty()) {
-                    log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
-                    webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
-                }
-
-                pool.shutdown();
-                log.info("All tasks completed for site: {}", siteEntity.getName());
-                siteEntity.setStatus(SiteStatusType.INDEXED);
-                siteRepo.save(siteEntity);
-            }
+        if (!errorLemmasTransaction.isEmpty()) {
+            log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
+            webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
         }
+
+        siteEntity.setStatus(SiteStatusType.INDEXED);
+        siteRepo.save(siteEntity);
+        log.info("Finished indexing site: {}", siteEntity.getName());
     }
 }

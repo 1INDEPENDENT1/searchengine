@@ -26,12 +26,13 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepo;
     private final WebScraperService webScraperService;
     private final SiteIndexingHelper siteIndexingHelper;
-    private final List<ForkJoinPool> forkJoinPools = new ArrayList<>();
+    private ForkJoinPool sharedPool;
     private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
-
     @Autowired
-    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo, WebScraperService webScraperService, SiteIndexingHelper siteIndexingHelper) {
+    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo,
+                               WebScraperService webScraperService,
+                               SiteIndexingHelper siteIndexingHelper) {
         this.sites = sites;
         this.siteRepo = siteRepo;
         this.webScraperService = webScraperService;
@@ -41,16 +42,18 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public boolean startIndexing() {
         if (!siteIndexingHelper.isIndexingInProgress()) {
+            // Пересоздание пула при необходимости
+            if (sharedPool == null || sharedPool.isShutdown() || sharedPool.isTerminated()) {
+                sharedPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+                log.info("Created new shared ForkJoinPool");
+            }
+
             log.info("Starting indexing process.");
-            List<Site> sitesList = sites.getSites();
-            List<SiteEntity> entities = updateOrCreateSiteEntities(sitesList);
+            List<SiteEntity> entities = updateOrCreateSiteEntities(sites.getSites());
 
             for (SiteEntity siteEntity : entities) {
-                int parallelism = Math.max(2, Runtime.getRuntime().availableProcessors() / entities.size());
-                ForkJoinPool pool = new ForkJoinPool(parallelism);
-                forkJoinPools.add(pool);
-                ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, pool, activeTaskCount);
-                pool.submit(task);
+                ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, activeTaskCount);
+                sharedPool.submit(task);
             }
 
             log.info("Indexing started asynchronously for all sites.");
@@ -61,40 +64,16 @@ public class IndexingServiceImpl implements IndexingService {
         return false;
     }
 
-    private List<SiteEntity> updateOrCreateSiteEntities(final List<Site> sitesList) {
-        log.info("Clearing database before indexing...");
-        siteIndexingHelper.clearDatabase();
-
-        List<SiteEntity> newEntities = new ArrayList<>();
-        sitesList.forEach(site -> {
-            SiteEntity newEntity = createNewSiteEntity(site);
-            newEntities.add(newEntity);
-        });
-
-        return newEntities;
-    }
-
-    private SiteEntity createNewSiteEntity(final Site site) {
-        final SiteEntity entity = new SiteEntity(site.getUrl(), site.getName(), SiteStatusType.INDEXING);
-        siteRepo.save(entity);
-        return entity;
-    }
-
-
     @Override
     public boolean stopIndexing() {
         if (siteIndexingHelper.isIndexingInProgress()) {
-            log.info("Stopping all indexing pools...");
+            log.info("Stopping shared pool...");
 
-            for (ForkJoinPool pool : forkJoinPools) {
-                pool.shutdownNow();
-            }
-
-            forkJoinPools.clear();
+            sharedPool.shutdownNow();
 
             log.info("Waiting for all tasks to finish...");
             int attempts = 0;
-            while (activeTaskCount.get() > 0 && attempts < 5) {
+            while (activeTaskCount.get() > 0 && attempts < 10) {
                 try {
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
@@ -122,19 +101,35 @@ public class IndexingServiceImpl implements IndexingService {
         return false;
     }
 
+    private List<SiteEntity> updateOrCreateSiteEntities(List<Site> sitesList) {
+        log.info("Clearing database before indexing...");
+        siteIndexingHelper.clearDatabase();
+
+        List<SiteEntity> newEntities = new ArrayList<>();
+        sitesList.forEach(site -> {
+            SiteEntity entity = new SiteEntity(site.getUrl(), site.getName(), SiteStatusType.INDEXING);
+            siteRepo.save(entity);
+            newEntities.add(entity);
+        });
+
+        return newEntities;
+    }
+
+
     public Map<String, Object> handlePageUpdate(String urlStr) {
         String finalUrlString = urlStr.trim().toLowerCase().replaceAll("www.", "");
         Map<String, Object> response = new HashMap<>();
         try {
-            final URL url = new URL(finalUrlString);
+            URL url = new URL(finalUrlString);
             Optional<Site> matchingSite = sites.getSites().stream()
                     .filter(site -> finalUrlString.contains(site.getUrl()))
                     .findFirst();
 
             if (matchingSite.isEmpty()) {
-                log.error("This page is located on additional sites specified in the configuration file.");
+                String error = "This page is located on additional sites specified in the configuration file.";
+                log.error(error);
                 response.put("result", false);
-                response.put("error", "This page is located on additional sites specified in the configuration file.");
+                response.put("error", error);
                 return response;
             }
 
@@ -149,6 +144,7 @@ public class IndexingServiceImpl implements IndexingService {
             siteEntity.setStatus(SiteStatusType.INDEXING);
             siteEntity.setStatusTime(LocalDateTime.now());
             siteRepo.save(siteEntity);
+
             log.info("Indexing page '{}'", siteConfig.getUrl());
             webScraperService.reindexPage(url.getPath(), siteEntity);
 
@@ -158,7 +154,7 @@ public class IndexingServiceImpl implements IndexingService {
             response.put("result", false);
             response.put("error", "Wrong URL format");
         } catch (Exception e) {
-            log.error("Error processing page: \" + e.getMessage()");
+            log.error("Error processing page: {}", e.getMessage());
             response.put("result", false);
             response.put("error", "Error processing page: " + e.getMessage());
         }
