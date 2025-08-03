@@ -10,7 +10,7 @@ import searchengine.models.SiteStatusType;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 import searchengine.services.impl.scraper.ScrapTask;
-import searchengine.services.impl.scraper.WebScraperService;
+import searchengine.services.impl.scraper.SiteIndexingImpl;
 
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,7 +23,7 @@ public class SiteIndexingHelper {
     private EntityManager entityManager;
     private final PageRepository pageRepo;
     private final SiteRepository siteRepo;
-    private final WebScraperService webScraperService;
+    private final SiteIndexingImpl siteIndexingImpl;
     private final DbCleaner dbCleaner;
 
     @Transactional
@@ -41,7 +41,7 @@ public class SiteIndexingHelper {
                 siteRepo,
                 pageRepo,
                 site,
-                webScraperService,
+                siteIndexingImpl,
                 "",
                 true,
                 ConcurrentHashMap.newKeySet(),

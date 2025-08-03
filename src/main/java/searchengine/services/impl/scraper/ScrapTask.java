@@ -20,7 +20,7 @@ public class ScrapTask extends RecursiveAction {
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
     private final SiteEntity siteEntity;
-    private final WebScraperService webScraperService;
+    private final SiteIndexingImpl siteIndexingImpl;
     private final String url;
     private final boolean isRootTask;
     private final Set<String> visitedPath;
@@ -42,7 +42,7 @@ public class ScrapTask extends RecursiveAction {
             processDiscoveredUrls(discoveredUrls);
 
             Map<PageEntity, Map<LemmaEntity, Integer>> tempLemmasTransactions =
-                    webScraperService.getPageAndSave(url, siteEntity);
+                    siteIndexingImpl.getPageAndSave(url, siteEntity);
 
             if (tempLemmasTransactions != null) {
                 errorLemmasTransaction.putAll(tempLemmasTransactions);
@@ -69,7 +69,7 @@ public class ScrapTask extends RecursiveAction {
                         siteRepo,
                         pageRepo,
                         siteEntity,
-                        webScraperService,
+                        siteIndexingImpl,
                         childUrl,
                         false,
                         visitedPath,
@@ -91,7 +91,7 @@ public class ScrapTask extends RecursiveAction {
         synchronized (this) {
             if (!errorLemmasTransaction.isEmpty()) {
                 log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
-                webScraperService.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
+                siteIndexingImpl.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
             }
 
             log.info("All tasks completed for site: {}", siteEntity.getName());

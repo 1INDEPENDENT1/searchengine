@@ -9,7 +9,7 @@ import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
-import searchengine.services.impl.scraper.WebScraperService;
+import searchengine.services.impl.scraper.SiteIndexingImpl;
 import searchengine.services.impl.scraper.ScrapTask;
 
 import java.net.MalformedURLException;
@@ -24,18 +24,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final SiteRepository siteRepo;
-    private final WebScraperService webScraperService;
+    private final SiteIndexingImpl siteIndexingImpl;
     private final SiteIndexingHelper siteIndexingHelper;
     private ForkJoinPool sharedPool;
     private final AtomicInteger activeTaskCount = new AtomicInteger(0);
 
     @Autowired
     public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo,
-                               WebScraperService webScraperService,
+                               SiteIndexingImpl siteIndexingImpl,
                                SiteIndexingHelper siteIndexingHelper) {
         this.sites = sites;
         this.siteRepo = siteRepo;
-        this.webScraperService = webScraperService;
+        this.siteIndexingImpl = siteIndexingImpl;
         this.siteIndexingHelper = siteIndexingHelper;
     }
 
@@ -146,7 +146,7 @@ public class IndexingServiceImpl implements IndexingService {
             siteRepo.save(siteEntity);
 
             log.info("Indexing page '{}'", siteConfig.getUrl());
-            webScraperService.reindexPage(url.getPath(), siteEntity);
+            siteIndexingImpl.reindexPage(url.getPath(), siteEntity);
 
             response.put("result", true);
         } catch (MalformedURLException e) {

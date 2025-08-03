@@ -61,7 +61,7 @@ public class HtmlParser {
         this.siteEntity = siteEntity;
     }
 
-    public Set<String> getPaths() throws IOException {
+    public Set<String> getPaths() {
         final String homeUrl = siteEntity.getUrl();
         try {
             Document doc = Jsoup.connect(homeUrl + url).get();
