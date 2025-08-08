@@ -133,7 +133,7 @@ public class CachedSearchService {
 
     private List<LemmaEntity> getLemmaEntitiesFromSite(SiteEntity site, List<String> lemmas) {
         List<LemmaEntity> lemmaEntities = lemmaRepository.findByLemmaIn(lemmas, site.getId());
-        if (lemmaEntities.isEmpty()) return null;
+        if (lemmaEntities.size() != lemmas.size()) return null;
 
         int maxPages = (int) (site.getSitePageEntities().size() * 0.85);
         return lemmaEntities.stream()
