@@ -37,7 +37,7 @@ public class ApiController {
         Map<String, Object> response = new HashMap<>();
 
         if (!status) {
-            response.put("result", false);
+            response.put("result", true);
             response.put("error", "Индексация уже запущена");
             return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
         } else {
