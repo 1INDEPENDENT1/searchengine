@@ -1,80 +1,63 @@
 package searchengine.controllers;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.StatisticsService;
 import searchengine.services.impl.indexing.IndexingServiceImpl;
 import searchengine.services.impl.searchImpl.SearchService;
+import searchengine.web.errors.BadRequestException;
+import searchengine.web.errors.ConflictException;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
+@RequiredArgsConstructor
 public class ApiController {
-
     private final StatisticsService statisticsService;
     private final IndexingServiceImpl indexingService;
     private final SearchService searchService;
 
-    public ApiController(StatisticsService statisticsService, IndexingServiceImpl indexingService, SearchService searchService) {
-        this.statisticsService = statisticsService;
-        this.indexingService = indexingService;
-        this.searchService = searchService;
-    }
-
     @GetMapping("/statistics")
-    public ResponseEntity<StatisticsResponse> statistics() {
-        return ResponseEntity.ok(statisticsService.getStatistics());
+    public StatisticsResponse statistics() {
+        return statisticsService.getStatistics();
     }
 
     @GetMapping("/startIndexing")
-    public ResponseEntity<Map<String, Object>> startIndexing() {
-        final boolean status = indexingService.startIndexing();
-        Map<String, Object> response = new HashMap<>();
-
-        if (!status) {
-            response.put("result", true);
-            response.put("error", "Индексация уже запущена");
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
-        } else {
-            response.put("result", true);
-            return ResponseEntity.ok(response);
+    public Map<String, Object> startIndexing() {
+        if (!indexingService.startIndexing()) {
+            throw new ConflictException("Индексация уже запущена");
         }
+        return Map.of("result", true);
     }
 
     @GetMapping("/stopIndexing")
-    public ResponseEntity<Map<String, Object>> stopIndexing() {
-        Map<String, Object> response = indexingService.stopIndexing()
-                ? Map.of("result", true)
-                : Map.of("result", false, "error", "Индексация не запущена");
-
-        return ResponseEntity.ok(response);
+    public Map<String, Object> stopIndexing() {
+        boolean stopped = indexingService.stopIndexing();
+        if (!stopped) {
+            throw new BadRequestException("Индексация не запущена");
+        }
+        return Map.of("result", true);
     }
 
     @PostMapping("/indexPage")
-    public ResponseEntity<?> indexPage(@RequestParam("url") String url) {
+    public Map<String, Object> indexPage(@RequestParam("url") String url) {
         Map<String, Object> result = indexingService.handlePageUpdate(url);
-
         if (Boolean.FALSE.equals(result.get("result"))) {
-            return ResponseEntity.badRequest().body(result);
+            String err = String.valueOf(result.getOrDefault("error", "Некорректный запрос"));
+            throw new BadRequestException(err);
         }
-        return ResponseEntity.ok(result);
+        return result;
     }
 
     @GetMapping("/search")
-    public ResponseEntity<?> search(@RequestParam String query,
-                                    @RequestParam(required = false) String site,
-                                    @RequestParam(defaultValue = "0") int offset,
-                                    @RequestParam(defaultValue = "20") int limit) {
+    public Object search(@RequestParam String query,
+                         @RequestParam(required = false) String site,
+                         @RequestParam(defaultValue = "0") int offset,
+                         @RequestParam(defaultValue = "20") int limit) {
         if (query == null || query.trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(Map.of("result", false, "error", "Задан пустой поисковый запрос"));
+            throw new BadRequestException("Задан пустой поисковый запрос");
         }
-        return ResponseEntity.ok(searchService.search(query, site, offset, limit));
+        return searchService.search(query, site, offset, limit);
     }
-
-
 }
