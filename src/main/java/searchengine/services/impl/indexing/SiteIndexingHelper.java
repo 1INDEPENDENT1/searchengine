@@ -16,8 +16,8 @@ import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@RequiredArgsConstructor
 @Service
+@RequiredArgsConstructor
 public class SiteIndexingHelper {
     @PersistenceContext
     private EntityManager entityManager;
@@ -25,6 +25,7 @@ public class SiteIndexingHelper {
     private final SiteRepository siteRepo;
     private final SiteIndexingImpl siteIndexingImpl;
     private final DbCleaner dbCleaner;
+    private final GatesConfig gatesConfig;
 
     @Transactional
     public void clearDatabase() {
@@ -46,7 +47,8 @@ public class SiteIndexingHelper {
                 true,
                 ConcurrentHashMap.newKeySet(),
                 new ConcurrentHashMap<>(),
-                activeTaskCount
+                activeTaskCount,
+                gatesConfig
         );
     }
 
@@ -60,6 +62,6 @@ public class SiteIndexingHelper {
 
     public boolean isIndexingInProgress() {
         return siteRepo.findAll().stream()
-                .anyMatch(site -> site.getStatus() == SiteStatusType.INDEXING);
+                .anyMatch(site -> site.getStatus() == SiteStatusType.INDEXING) && gatesConfig.indexingGate().isRunning();
     }
 }

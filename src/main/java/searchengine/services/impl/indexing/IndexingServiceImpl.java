@@ -1,7 +1,7 @@
 package searchengine.services.impl.indexing;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @Log4j2
+@RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
     private final SitesList sites;
     private final SiteRepository siteRepo;
@@ -28,16 +29,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteIndexingHelper siteIndexingHelper;
     private ForkJoinPool sharedPool;
     private final AtomicInteger activeTaskCount = new AtomicInteger(0);
-
-    @Autowired
-    public IndexingServiceImpl(SitesList sites, SiteRepository siteRepo,
-                               SiteIndexingImpl siteIndexingImpl,
-                               SiteIndexingHelper siteIndexingHelper) {
-        this.sites = sites;
-        this.siteRepo = siteRepo;
-        this.siteIndexingImpl = siteIndexingImpl;
-        this.siteIndexingHelper = siteIndexingHelper;
-    }
+    private final GatesConfig gatesConfig;
 
     @Override
     public boolean startIndexing() {
@@ -56,6 +48,7 @@ public class IndexingServiceImpl implements IndexingService {
                 sharedPool.submit(task);
             }
 
+            gatesConfig.indexingGate().start();
             log.info("Indexing started asynchronously for all sites.");
             return true;
         }
@@ -96,6 +89,7 @@ public class IndexingServiceImpl implements IndexingService {
 
             log.info("Set FAILED status to all indexing sites");
 
+            gatesConfig.indexingGate().stop();
             return true;
         }
         return false;
