@@ -12,8 +12,6 @@ import java.util.List;
 public interface PageRepository extends JpaRepository<PageEntity, Integer> {
     PageEntity findByPath(String path);
 
-    void deleteBySiteEntity(SiteEntity site);
-
     @Query("SELECT p FROM PageEntity p WHERE p.siteEntity = :siteEntity")
     List<PageEntity> findAllBySiteEntity(SiteEntity siteEntity);
 

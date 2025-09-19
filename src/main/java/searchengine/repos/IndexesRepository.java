@@ -13,7 +13,5 @@ import java.util.List;
 @Repository
 public interface IndexesRepository extends JpaRepository<IndexesEntity, Integer> {
     List<IndexesEntity> findByPageEntity(@Param("page") PageEntity page);
-    List<IndexesEntity> findByLemmaEntity(LemmaEntity lemma);
     List<IndexesEntity> findByLemmaEntityIn(List<LemmaEntity> lemmas);
-    void deleteByLemmaEntityIn(List<LemmaEntity> lemmas);
 }
