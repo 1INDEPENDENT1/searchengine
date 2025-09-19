@@ -8,6 +8,7 @@ import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
+import searchengine.services.impl.indexing.GatesConfig;
 
 import java.util.*;
 import java.util.concurrent.CancellationException;
@@ -26,6 +27,7 @@ public class ScrapTask extends RecursiveAction {
     private final Set<String> visitedPath;
     private final Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction;
     private final AtomicInteger activeTaskCount;
+    private final GatesConfig gatesConfig;
 
     @Override
     protected void compute() {
@@ -74,7 +76,8 @@ public class ScrapTask extends RecursiveAction {
                         false,
                         visitedPath,
                         errorLemmasTransaction,
-                        activeTaskCount
+                        activeTaskCount,
+                        gatesConfig
                 ))
                 .toList();
 
@@ -97,6 +100,7 @@ public class ScrapTask extends RecursiveAction {
             log.info("All tasks completed for site: {}", siteEntity.getName());
             siteEntity.setStatus(SiteStatusType.INDEXED);
             siteRepo.save(siteEntity);
+            gatesConfig.indexingGate().stop();
         }
     }
 }

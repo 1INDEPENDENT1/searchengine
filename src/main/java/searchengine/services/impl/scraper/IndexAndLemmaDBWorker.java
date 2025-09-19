@@ -21,18 +21,13 @@ import searchengine.services.impl.textWorkers.TextLemmaParser;
 
 @Log4j2
 @Service
+@RequiredArgsConstructor
 public class IndexAndLemmaDBWorker {
     private final LemmaRepository lemmaRepository;
     private final IndexesRepository indexesRepository;
     private final TextLemmaParser textLemmaParser;
     @PersistenceContext
     private EntityManager entityManager;
-
-    public IndexAndLemmaDBWorker(LemmaRepository lemmaRepository, IndexesRepository indexesRepository, TextLemmaParser textLemmaParser) throws IOException {
-        this.lemmaRepository = lemmaRepository;
-        this.indexesRepository = indexesRepository;
-        this.textLemmaParser = textLemmaParser;
-    }
 
     @Transactional
     public Map<LemmaEntity, Integer> saveTextToLemmasAndIndexes(final String pageText, SiteEntity siteEntity, PageEntity pageEntity) {
