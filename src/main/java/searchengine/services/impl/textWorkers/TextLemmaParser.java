@@ -1,28 +1,22 @@
 package searchengine.services.impl.textWorkers;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.WrongCharaterException;
 import org.apache.lucene.morphology.english.EnglishLuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.springframework.stereotype.Component;
 import searchengine.enums.LangEnum;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 @Log4j2
 @Component
+@RequiredArgsConstructor
 public class TextLemmaParser {
-    private final LuceneMorphology morphRU = new RussianLuceneMorphology();
-    private final LuceneMorphology morphEN = new EnglishLuceneMorphology();
-    public static List<String> wrongWords = new ArrayList<>();
-
-    public TextLemmaParser() throws IOException {
-    }
+    private final RussianLuceneMorphology morphRU;
+    private final EnglishLuceneMorphology morphEN;
+    public static List<String> wrongWords = Collections.synchronizedList(new ArrayList<>());
 
     public HashMap<String, Integer> sortWordsOnRussianAndEnglishWords(final String pageText) {
         List<String> words = Arrays.asList(removeHtmlTags(pageText).split("[ \\t]+")).parallelStream()
