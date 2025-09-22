@@ -8,7 +8,7 @@ import jakarta.persistence.*;
 @Entity
 @Getter
 @Setter
-@Table(name = "SEARCH_INDEX", indexes = {@Index(name = "idx_page_lemma", columnList = "page_id, lemma_id", unique = true)})
+@Table(name = "search_index", indexes = {@Index(name = "idx_page_lemma", columnList = "page_id, lemma_id", unique = true)})
 public class IndexesEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

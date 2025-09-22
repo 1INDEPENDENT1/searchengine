@@ -1,6 +1,5 @@
 package searchengine.repos;
 
-import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import org.springframework.data.jpa.repository.Modifying;
@@ -23,14 +22,18 @@ public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     List<LemmaEntity> findByLemmaIn(@Param("lemmas") String lemma, @Param("siteId") int siteId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Transactional
-    @Query(
-            value =
-                    "INSERT INTO lemmas(site_id, lemma, frequency) " +
-                            "VALUES (:siteId, :lemma, 1) " +
-                            "ON CONFLICT (site_id, lemma) " +
-                            "DO UPDATE SET frequency = lemmas.frequency + EXCLUDED.frequency",
-            nativeQuery = true
-    )
-    void upsertAndIncrement(@Param("siteId") int siteId, @Param("lemma") String lemma);
+    @org.springframework.transaction.annotation.Transactional
+    @Query(value = """
+            INSERT INTO lemmas(site_id, lemma, frequency)
+            SELECT :siteId, x.lemma, 1
+            FROM (
+              SELECT DISTINCT t.lemma
+              FROM unnest(CAST(:lemmasstr AS text[])) AS t(lemma)
+            ) x
+            ORDER BY x.lemma
+            ON CONFLICT (site_id, lemma)
+            DO UPDATE SET frequency = lemmas.frequency + 1
+            """, nativeQuery = true)
+    void batchUpsertIncrement(@Param("siteId") int siteId,
+                              @Param("lemmasstr") String[] lemmas);
 }

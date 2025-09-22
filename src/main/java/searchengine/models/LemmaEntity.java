@@ -9,7 +9,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @Table(
-        name = "LEMMAS",
+        name = "lemmas",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = {"lemma", "site_id"})
         }

@@ -7,10 +7,7 @@ import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.UnexpectedRollbackException;
-import searchengine.models.LemmaEntity;
 import searchengine.models.PageEntity;
 import searchengine.models.SiteEntity;
 import searchengine.repos.PageRepository;
@@ -20,16 +17,13 @@ import searchengine.services.impl.textWorkers.TextLemmaParser;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.util.Map;
-
 @Service
 @RequiredArgsConstructor
 @Log4j2
 public class SiteIndexingImpl implements SiteIndexing {
     private final SiteRepository siteRepo;
     private final PageRepository pageRepo;
-    @Autowired
-    IndexAndLemmaDBWorker indexAndLemmaDBWorker;
+    private final IndexAndLemmaDBWorker indexAndLemmaDBWorker;
 
     private Connection.Response fetchDocument(String path, SiteEntity siteEntity) {
         String url = getFullUrl(path, siteEntity);
@@ -49,13 +43,13 @@ public class SiteIndexingImpl implements SiteIndexing {
     }
 
     @Override
-    public Map<PageEntity, Map<LemmaEntity, Integer>> getPageAndSave(String path, SiteEntity siteEntity) {
+    public void getPageAndSave(String path, SiteEntity siteEntity) {
         try {
             Connection.Response response = fetchDocument(path, siteEntity);
             if (response != null) {
                 Document document = response.parse();
                 int statusCode = response.statusCode();
-                return saveUrlPage(path, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
+                saveUrlPage(path, document.wholeText(), statusCode, siteEntity); // Сохраняем страницу с кодом 200
             }
         } catch (HttpStatusException e) {
             log.error("HTTP error while fetching URL: {}, Status: {}", path, e.getStatusCode());
@@ -66,12 +60,11 @@ public class SiteIndexingImpl implements SiteIndexing {
             saveUrlPage(path, e.getMessage(), 500, siteEntity);
             throw new RuntimeException("IO error fetching URL: " + path, e);
         }
-        return null;
     }
 
     @SneakyThrows
     @Override
-    public Map<PageEntity, Map<LemmaEntity, Integer>> saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
+    public void saveUrlPage(String checkingUrl, String pageContent, int statusCode, SiteEntity siteEntity) {
         if (isNotContainsUrl(checkingUrl, siteEntity)) {
             PageEntity page = new PageEntity(siteEntity, checkingUrl);
             page.setContent(pageContent);
@@ -80,37 +73,8 @@ public class SiteIndexingImpl implements SiteIndexing {
             log.info("Saving url \"{}\"", checkingUrl);
             pageRepo.save(page);
             siteRepo.save(siteEntity);
-            try {
-                if (statusCode == 200) {
-                    Map<LemmaEntity, Integer> lemmaAndCount = indexAndLemmaDBWorker.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
-                    return lemmaAndCount.isEmpty() ? null : Map.of(page, lemmaAndCount);
-                }
-            } catch (UnexpectedRollbackException ure) {
-                log.warn("UnexpectedRollbackException — caching lemma batch for page {}", page.getId());
-                return Map.of(page, indexAndLemmaDBWorker.getLemmasAndCountWithKey(
-                        new TextLemmaParser().sortWordsOnRussianAndEnglishWords(pageContent),
-                        siteEntity
-                ));
-            }
-        }
-        return null;
-    }
-
-    @Override
-    public void finalizeFailedLemmaBatches(
-            Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction,
-            SiteEntity siteEntity
-    ) {
-        for (Map.Entry<PageEntity, Map<LemmaEntity, Integer>> entry : errorLemmasTransaction.entrySet()) {
-            PageEntity pageEntity = entry.getKey();
-            Map<LemmaEntity, Integer> lemmaAndCount = entry.getValue();
-
-            if (!lemmaAndCount.isEmpty()) {
-                try {
-                    indexAndLemmaDBWorker.addOrUpdateLemmas(lemmaAndCount, siteEntity, pageEntity);
-                } catch (Exception e) {
-                    log.error("Error finalizing batch for page {}: {}", pageEntity.getId(), e.getMessage());
-                }
+            if (statusCode == 200) {
+                indexAndLemmaDBWorker.saveTextToLemmasAndIndexes(pageContent, siteEntity, page);
             }
         }
     }

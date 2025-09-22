@@ -43,12 +43,7 @@ public class ScrapTask extends RecursiveAction {
 
             processDiscoveredUrls(discoveredUrls);
 
-            Map<PageEntity, Map<LemmaEntity, Integer>> tempLemmasTransactions =
-                    siteIndexingImpl.getPageAndSave(url, siteEntity);
-
-            if (tempLemmasTransactions != null) {
-                errorLemmasTransaction.putAll(tempLemmasTransactions);
-            }
+            siteIndexingImpl.getPageAndSave(url, siteEntity);
 
             log.debug("Task completed for URL: {}", url);
         } catch (Exception e) {
@@ -92,11 +87,6 @@ public class ScrapTask extends RecursiveAction {
 
     private void endProcessing() {
         synchronized (this) {
-            if (!errorLemmasTransaction.isEmpty()) {
-                log.info("Finalizing {} failed lemma batches for site: {}", errorLemmasTransaction.size(), siteEntity.getUrl());
-                siteIndexingImpl.finalizeFailedLemmaBatches(errorLemmasTransaction, siteEntity);
-            }
-
             log.info("All tasks completed for site: {}", siteEntity.getName());
             siteEntity.setStatus(SiteStatusType.INDEXED);
             siteRepo.save(siteEntity);
