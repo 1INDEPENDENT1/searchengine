@@ -1,0 +1,52 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-table-lemmas
+      author: you
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            tableExists:
+              tableName: LEMMAS
+      changes:
+        - createTable:
+            tableName: LEMMAS
+            columns:
+              - column:
+                  name: id
+                  type: INT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: site_id
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: lemma
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: frequency
+                  type: INT
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: LEMMAS
+            baseColumnNames: site_id
+            constraintName: fk_lemma_site
+            referencedTableName: SITES
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addUniqueConstraint:
+            tableName: LEMMAS
+            columnNames: lemma, site_id
+            constraintName: uq_lemma_site
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: LEMMAS
+            constraintName: fk_lemma_site
+        - dropTable:
+            tableName: LEMMAS

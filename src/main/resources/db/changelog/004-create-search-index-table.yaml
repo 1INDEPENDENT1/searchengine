@@ -1,0 +1,62 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-table-search-index
+      author: you
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            tableExists:
+              tableName: SEARCH_INDEX
+      changes:
+        - createTable:
+            tableName: SEARCH_INDEX
+            columns:
+              - column:
+                  name: id
+                  type: INT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: page_id
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: lemma_id
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: rank
+                  type: FLOAT
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: SEARCH_INDEX
+            baseColumnNames: page_id
+            constraintName: fk_index_page
+            referencedTableName: page
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: SEARCH_INDEX
+            baseColumnNames: lemma_id
+            constraintName: fk_index_lemma
+            referencedTableName: LEMMAS
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addUniqueConstraint:
+            tableName: SEARCH_INDEX
+            columnNames: page_id, lemma_id
+            constraintName: idx_page_lemma
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableName: SEARCH_INDEX
+            constraintName: fk_index_page
+        - dropForeignKeyConstraint:
+            baseTableName: SEARCH_INDEX
+            constraintName: fk_index_lemma
+        - dropTable:
+            tableName: SEARCH_INDEX
