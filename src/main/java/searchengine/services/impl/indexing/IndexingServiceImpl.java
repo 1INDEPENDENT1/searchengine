@@ -99,16 +99,8 @@ public class IndexingServiceImpl implements IndexingService {
         log.info("Clearing database before indexing...");
         siteIndexingHelper.clearDatabase();
 
-        List<SiteEntity> newEntities = new ArrayList<>();
-        sitesList.forEach(site -> {
-            SiteEntity entity = new SiteEntity(site.getUrl(), site.getName(), SiteStatusType.INDEXING);
-            siteRepo.save(entity);
-            newEntities.add(entity);
-        });
-
-        return newEntities;
+        return siteIndexingHelper.createSites(sitesList);
     }
-
 
     public Map<String, Object> handlePageUpdate(String urlStr) {
         String finalUrlString = urlStr.trim().toLowerCase().replaceAll("www.", "");
