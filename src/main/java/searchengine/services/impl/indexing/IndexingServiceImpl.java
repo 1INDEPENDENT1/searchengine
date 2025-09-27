@@ -9,6 +9,7 @@ import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 import searchengine.repos.SiteRepository;
 import searchengine.services.IndexingService;
+import searchengine.services.impl.scraper.ActiveTasks;
 import searchengine.services.impl.scraper.SiteIndexingImpl;
 import searchengine.services.impl.scraper.ScrapTask;
 
@@ -17,7 +18,7 @@ import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Log4j2

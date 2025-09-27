@@ -10,6 +10,7 @@ import searchengine.models.SiteStatusType;
 import searchengine.repos.DbCleanerRepository;
 import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
+import searchengine.services.impl.scraper.ActiveTasks;
 import searchengine.services.impl.scraper.ScrapTask;
 import searchengine.services.impl.scraper.SiteIndexingImpl;
 
