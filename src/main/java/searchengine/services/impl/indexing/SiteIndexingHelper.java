@@ -46,7 +46,7 @@ public class SiteIndexingHelper {
     }
 
     @Transactional
-    public ScrapTask prepareIndexingTask(SiteEntity site, AtomicInteger activeTaskCount) {
+    public ScrapTask prepareIndexingTask(SiteEntity site, ActiveTasks activeTaskCount) {
         site.setStatusTime(LocalDateTime.now());
         site.setStatus(SiteStatusType.INDEXING);
         siteRepo.save(site);
@@ -62,14 +62,6 @@ public class SiteIndexingHelper {
                 activeTaskCount,
                 gatesConfig
         );
-    }
-
-    @Transactional
-    public void setManualStopStatus(SiteEntity site) {
-        site.setStatus(SiteStatusType.FAILED);
-        site.setStatusTime(LocalDateTime.now());
-        site.setLastError("Индексация была остановлена вручную");
-        siteRepo.save(site);
     }
 
     public boolean isIndexingInProgress() {

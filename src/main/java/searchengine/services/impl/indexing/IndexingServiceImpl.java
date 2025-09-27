@@ -28,7 +28,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteIndexingImpl siteIndexingImpl;
     private final SiteIndexingHelper siteIndexingHelper;
     private ForkJoinPool sharedPool;
-    private final AtomicInteger activeTaskCount = new AtomicInteger(0);
+    private final ActiveTasks activeTaskCount = new ActiveTasks();
     private final GatesConfig gatesConfig;
 
     @Override
@@ -63,33 +63,17 @@ public class IndexingServiceImpl implements IndexingService {
             log.info("Stopping shared pool...");
 
             sharedPool.shutdownNow();
+            gatesConfig.indexingGate().stop();
 
             log.info("Waiting for all tasks to finish...");
-            int attempts = 0;
-            while (activeTaskCount.get() > 0 && attempts < 10) {
-                try {
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.error("Interrupted while waiting for task completion", e);
-                    break;
-                }
-                attempts++;
+            try {
+                activeTaskCount.awaitZero(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             }
 
             log.info("All tasks reported finished or timeout reached");
 
-            List<SiteEntity> indexingSites = siteRepo.findAll().stream()
-                    .filter(site -> site.getStatus() == SiteStatusType.INDEXING)
-                    .toList();
-
-            for (SiteEntity site : indexingSites) {
-                siteIndexingHelper.setManualStopStatus(site);
-            }
-
-            log.info("Set FAILED status to all indexing sites");
-
-            gatesConfig.indexingGate().stop();
             return true;
         }
         return false;

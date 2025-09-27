@@ -10,6 +10,7 @@ import searchengine.repos.PageRepository;
 import searchengine.repos.SiteRepository;
 import searchengine.services.impl.indexing.GatesConfig;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.RecursiveAction;
@@ -26,13 +27,13 @@ public class ScrapTask extends RecursiveAction {
     private final boolean isRootTask;
     private final Set<String> visitedPath;
     private final Map<PageEntity, Map<LemmaEntity, Integer>> errorLemmasTransaction;
-    private final AtomicInteger activeTaskCount;
+    private final ActiveTasks activeTaskCount;
     private final GatesConfig gatesConfig;
 
     @Override
     protected void compute() {
         if (Thread.currentThread().isInterrupted()) return;
-        activeTaskCount.incrementAndGet();
+        activeTaskCount.inc();
 
         try {
             log.debug("Task started for URL: {}", url);
@@ -49,7 +50,7 @@ public class ScrapTask extends RecursiveAction {
         } catch (Exception e) {
             log.error("Error processing URL: {}", url, e);
         } finally {
-            activeTaskCount.decrementAndGet();
+            activeTaskCount.decAndSignal();
             if (isRootTask) {
                 log.info("Finishing processing for site: {}", siteEntity.getName());
                 endProcessing();
@@ -87,10 +88,29 @@ public class ScrapTask extends RecursiveAction {
 
     private void endProcessing() {
         synchronized (this) {
-            log.info("All tasks completed for site: {}", siteEntity.getName());
-            siteEntity.setStatus(SiteStatusType.INDEXED);
-            siteRepo.save(siteEntity);
-            gatesConfig.indexingGate().stop();
+            if(gatesConfig.indexingGate().isRunning()) {
+                var fresh = siteRepo.findById(siteEntity.getId()).orElseThrow();
+                if (fresh.getStatus() != SiteStatusType.INDEXING) {
+                    log.info("Skip setting INDEXED, current status is {}", fresh.getStatus());
+                    gatesConfig.indexingGate().stop();
+                    return;
+                }
+                fresh.setStatus(SiteStatusType.INDEXED);
+                siteRepo.save(fresh);
+                if(!siteRepo.existsByStatus(SiteStatusType.INDEXING)) {
+                    gatesConfig.indexingGate().stop();
+                }
+            } else {
+                setManualStopStatus(siteEntity);
+                log.info("Set site \"{}\" status \"FAILED\"", siteEntity.getName());
+            }
         }
+    }
+
+    public void setManualStopStatus(SiteEntity site) {
+        site.setStatus(SiteStatusType.FAILED);
+        site.setStatusTime(LocalDateTime.now());
+        site.setLastError("Индексация была остановлена вручную");
+        siteRepo.save(site);
     }
 }
