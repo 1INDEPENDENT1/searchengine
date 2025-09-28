@@ -29,12 +29,12 @@ public class SiteIndexingHelper {
     private final DbCleanerRepository dbCleaner;
     private final GatesConfig gatesConfig;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void clearDatabase() {
         dbCleaner.truncateAll();
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public List<SiteEntity> createSites(List<Site> sitesList) {
         List<SiteEntity> newEntities = new ArrayList<>();
         sitesList.forEach(site -> {
