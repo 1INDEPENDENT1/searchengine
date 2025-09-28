@@ -5,7 +5,6 @@ import org.springframework.stereotype.Repository;
 import searchengine.models.SiteEntity;
 import searchengine.models.SiteStatusType;
 
-import java.util.List;
 import java.util.Optional;
 
 @Repository
