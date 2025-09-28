@@ -26,7 +26,7 @@ public class ApiController {
     @GetMapping("/startIndexing")
     public Map<String, Object> startIndexing() {
         if (!indexingService.startIndexing()) {
-            throw new ConflictException("Индексация уже запущена");
+            return Map.of("result", true);
         }
         return Map.of("result", true);
     }
