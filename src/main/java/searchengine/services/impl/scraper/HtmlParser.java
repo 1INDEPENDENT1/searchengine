@@ -144,6 +144,7 @@ public class HtmlParser {
             return "/";
         }
     }
+
     public boolean isHtmlPage(String url) {
         return !hasUnwantedExtension(url) && !containsUnwantedKeywords(url);
     }
