@@ -17,8 +17,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Service
 @Log4j2
@@ -31,11 +30,13 @@ public class IndexingServiceImpl implements IndexingService {
     private ForkJoinPool sharedPool;
     private final ActiveTasks activeTaskCount = new ActiveTasks();
     private final GatesConfig gatesConfig;
+    private final Executor launcher = Executors.newCachedThreadPool();
+
 
     @Override
     public boolean startIndexing() {
         if (!siteIndexingHelper.isIndexingInProgress()) {
-            // Пересоздание пула при необходимости
+
             if (sharedPool == null || sharedPool.isShutdown() || sharedPool.isTerminated()) {
                 sharedPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
                 log.info("Created new shared ForkJoinPool");
@@ -46,7 +47,16 @@ public class IndexingServiceImpl implements IndexingService {
 
             for (SiteEntity siteEntity : entities) {
                 ScrapTask task = siteIndexingHelper.prepareIndexingTask(siteEntity, activeTaskCount);
-                sharedPool.submit(task);
+
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        log.info("Invoking root for site {}", siteEntity.getName());
+                        sharedPool.invoke(task);
+                        log.info("Root finished for site {}", siteEntity.getName());
+                    } catch (Throwable t) {
+                        log.error("Root crashed for site {}: {}", siteEntity.getName(), t.getMessage(), t);
+                    }
+                }, launcher);
             }
 
             gatesConfig.indexingGate().start();
@@ -112,7 +122,6 @@ public class IndexingServiceImpl implements IndexingService {
                         return newSite;
                     });
 
-            siteEntity.setStatus(SiteStatusType.INDEXING);
             siteEntity.setStatusTime(LocalDateTime.now());
             siteRepo.save(siteEntity);
 
