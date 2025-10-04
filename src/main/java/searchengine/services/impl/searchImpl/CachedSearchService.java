@@ -6,6 +6,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import searchengine.dto.index.SearchResultDto;
 
 import searchengine.models.*;
@@ -23,6 +24,7 @@ public class CachedSearchService {
     private final TextLemmaParser textLemmaParser;
     private final SnippetGenerator snippetGenerator;
 
+    @Transactional
     @Cacheable(value = "searchResults", key = "#query + '|' + (#siteUrl != null ? #siteUrl : '')")
     public List<SearchResultDto> getAllResults(String query, String siteUrl) {
         List<String> lemmas = textLemmaParser
