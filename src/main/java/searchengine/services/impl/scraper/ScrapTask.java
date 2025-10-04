@@ -40,6 +40,7 @@ public class ScrapTask extends RecursiveAction {
 
             visitedPath.add(url);
             HtmlParser htmlParser = new HtmlParser(url, siteEntity);
+
             Set<String> discoveredUrls = htmlParser.getPaths();
 
             processDiscoveredUrls(discoveredUrls);
@@ -47,14 +48,16 @@ public class ScrapTask extends RecursiveAction {
             siteIndexingImpl.getPageAndSave(url, siteEntity);
 
             log.debug("Task completed for URL: {}", url);
+            log.debug("Task count after the URLs completing: {}", activeTaskCount.count.get());
         } catch (Exception e) {
             log.error("Error processing URL: {}", url, e);
         } finally {
-            activeTaskCount.decAndSignal();
             if (isRootTask) {
                 log.info("Finishing processing for site: {}", siteEntity.getName());
                 endProcessing();
             }
+            activeTaskCount.decAndSignal();
+            log.debug("Task count after decrement count: {}", activeTaskCount.count.get());
         }
     }
 
@@ -89,6 +92,7 @@ public class ScrapTask extends RecursiveAction {
     private void endProcessing() {
         synchronized (this) {
             if(gatesConfig.indexingGate().isRunning()) {
+                log.info("Set site \"{}\" status \"INDEXED\"", siteEntity.getName());
                 var fresh = siteRepo.findById(siteEntity.getId()).orElseThrow();
                 if (fresh.getStatus() != SiteStatusType.INDEXING) {
                     log.info("Skip setting INDEXED, current status is {}", fresh.getStatus());
