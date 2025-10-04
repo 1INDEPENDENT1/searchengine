@@ -23,8 +23,8 @@ indexing-settings:
       name: Вышний волочек
     - url: https://nikoartgallery.com
       name: Креативное пространство и галерея Н.Б. Никогосяна
-    - url: https://et-cetera.ru/mobile
-      name: Ет Сетера Мобайл
+    - url: https://www.svetlovka.ru/
+      name: Светловка
 
 logging:
   level:
