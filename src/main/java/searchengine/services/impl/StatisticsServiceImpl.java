@@ -17,8 +17,6 @@ import searchengine.services.StatisticsService;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
@@ -34,26 +32,39 @@ public class StatisticsServiceImpl implements StatisticsService {
         TotalStatistics total = new TotalStatistics();
         total.setSites(sites.getSites().size());
         total.setIndexing(true);
+        int pages = 0;
+        int lemmas = 0;
+        String status = "FAILED";
+        String error = "Not indexed yet";
+        long statusTime = System.currentTimeMillis();
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        for(Site site : sites.getSites()) {
-            SiteEntity siteEntity = siteRepo.findByUrl(site.getUrl()).get();
+
+        for (Site site : sites.getSites()) {
+            SiteEntity siteEntity = siteRepo.findByUrl(site.getUrl()).orElse(null);
+
+            if (siteEntity != null) {
+                pages = Math.toIntExact(pageRepo.countBySiteEntity(siteEntity));
+                lemmas = Math.toIntExact(lemmaRepo.countBySiteEntity(siteEntity));
+                status = siteEntity.getStatus().toString();
+                error = siteEntity.getLastError();
+                statusTime = siteEntity.getStatusTime()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli();
+            }
+
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());
-            int pages = Math.toIntExact(pageRepo.countBySiteEntity(siteEntity));
-            int lemmas = Math.toIntExact(lemmaRepo.countBySiteEntity(siteEntity));
             item.setPages(pages);
             item.setLemmas(lemmas);
-            item.setStatus(siteEntity.getStatus().toString());
-            item.setError(siteEntity.getLastError());
-            item.setStatusTime(siteEntity.getStatusTime()
-                    .atZone(ZoneId.systemDefault())
-                    .toInstant()
-                    .toEpochMilli());
+            item.setStatus(status);
+            item.setError(error);
+            item.setStatusTime(statusTime);
+            detailed.add(item);
             total.setPages(total.getPages() + pages);
             total.setLemmas(total.getLemmas() + lemmas);
-            detailed.add(item);
         }
 
         StatisticsResponse response = new StatisticsResponse();

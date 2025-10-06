@@ -37,12 +37,4 @@ public class SiteEntity {
         this.url = url;
         this.name = name;
     }
-
-    public SiteEntity(SiteStatusType status, LocalDateTime statusTime, String lastError, String url, String name){
-        this.status = status;
-        this.statusTime = statusTime;
-        this.lastError = lastError;
-        this.url = url;
-        this.name = name;
-    }
 }
